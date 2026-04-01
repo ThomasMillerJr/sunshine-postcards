@@ -59,11 +59,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold mb-2">Sunshine Postcards</h1>
-        <p className="text-gray-500 mb-8">Enter your PIN to continue</p>
-        <div className="flex gap-3 justify-center mb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#FFFCF5]">
+      <div className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(247,183,51,0.1)] border border-[#FFF0D4] p-10 w-full max-w-sm text-center">
+        <img
+          src="/logo.png"
+          alt="Sunshine Postcards"
+          className="h-20 mx-auto mb-6"
+        />
+        <p className="text-[#B8B0A4] text-sm mb-8">Enter your PIN to continue</p>
+        <div className="flex gap-3 justify-center mb-5">
           {pin.map((digit, i) => (
             <input
               key={i}
@@ -75,11 +79,16 @@ export default function LoginPage() {
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
               disabled={loading}
-              className="w-14 h-14 text-center text-2xl border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+              className="w-16 h-16 text-center text-2xl font-bold border-2 border-[#FFF0D4] rounded-xl focus:border-[#F7B733] focus:ring-2 focus:ring-[#F7B73340] focus:outline-none transition-all bg-[#FFFCF5] text-[#2D2A26] disabled:opacity-50"
             />
           ))}
         </div>
-        {error && <p className="text-red-500 text-sm">{error}</p>}
+        {error && <p className="text-[#E8634A] text-sm font-medium">{error}</p>}
+        {loading && (
+          <div className="mt-4">
+            <div className="w-6 h-6 border-2 border-[#FFF0D4] border-t-[#F7B733] rounded-full animate-spin mx-auto"></div>
+          </div>
+        )}
       </div>
     </div>
   );
