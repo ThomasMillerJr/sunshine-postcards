@@ -13,17 +13,11 @@ interface Postcard {
   locationDepicted: string | null;
   estimatedValue: number | null;
   createdAt: string;
-}
-
-interface PostcardImage {
-  id: number;
-  postcardId: number;
-  side: string;
+  thumbnailImageId: number | null;
 }
 
 export default function InventoryPage() {
   const [postcards, setPostcards] = useState<Postcard[]>([]);
-  const [images, setImages] = useState<Map<number, number>>(new Map());
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -161,8 +155,12 @@ export default function InventoryPage() {
               href={`/inventory/${pc.id}`}
               className="bg-white rounded-xl border border-[#FFF0D4] shadow-[0_2px_8px_rgba(247,183,51,0.06)] overflow-hidden hover:-translate-y-1 hover:shadow-[0_6px_20px_rgba(0,0,0,0.06)] transition-all"
             >
-              <div className="aspect-[4/3] bg-[#F0EBE3] flex items-center justify-center">
-                <span className="text-2xl text-[#D4CFC6]">&#128238;</span>
+              <div className="aspect-[4/3] bg-[#F0EBE3] flex items-center justify-center overflow-hidden">
+                {pc.thumbnailImageId ? (
+                  <img src={`/api/images/${pc.thumbnailImageId}`} alt={pc.title} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-2xl text-[#D4CFC6]">&#128238;</span>
+                )}
               </div>
               <div className="p-3">
                 <p className="text-sm font-semibold text-[#2D2A26] truncate">{pc.title || "Untitled"}</p>
@@ -198,8 +196,12 @@ export default function InventoryPage() {
                 i % 2 === 0 ? "bg-white" : "bg-[#FFFDF8]"
               }`}
             >
-              <div className="w-10 h-7 rounded bg-[#F0EBE3] flex items-center justify-center mr-3 flex-shrink-0">
-                <span className="text-xs text-[#D4CFC6]">&#128238;</span>
+              <div className="w-10 h-7 rounded bg-[#F0EBE3] flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden">
+                {pc.thumbnailImageId ? (
+                  <img src={`/api/images/${pc.thumbnailImageId}`} alt={pc.title} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-xs text-[#D4CFC6]">&#128238;</span>
+                )}
               </div>
               <span className="flex-1 text-sm font-semibold text-[#2D2A26] truncate">{pc.title || "Untitled"}</span>
               <span className="w-16 text-xs text-[#8A8278]">{pc.era || "\u2014"}</span>

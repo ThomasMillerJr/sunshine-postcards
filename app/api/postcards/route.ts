@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { postcards } from "@/lib/schema";
-import { desc, sql } from "drizzle-orm";
+import { postcards, postcardImages } from "@/lib/schema";
+import { desc, eq, sql } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   const db = getDb();
@@ -17,13 +17,27 @@ export async function GET(request: NextRequest) {
     .offset(offset)
     .all();
 
+  // Attach first image (prefer front) for each postcard
+  const allImages = db.select().from(postcardImages).all();
+  const imageMap = new Map<number, number>();
+  for (const img of allImages) {
+    if (!imageMap.has(img.postcardId) || img.side === "front") {
+      imageMap.set(img.postcardId, img.id);
+    }
+  }
+
+  const withThumbnails = results.map((p) => ({
+    ...p,
+    thumbnailImageId: imageMap.get(p.id) ?? null,
+  }));
+
   const countResult = db
     .select({ count: sql<number>`count(*)` })
     .from(postcards)
     .all();
   const total = countResult[0]?.count ?? 0;
 
-  return NextResponse.json({ postcards: results, total });
+  return NextResponse.json({ postcards: withThumbnails, total });
 }
 
 export async function POST(request: NextRequest) {

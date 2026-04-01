@@ -7,29 +7,67 @@ import Anthropic from "@anthropic-ai/sdk";
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 const APIFY_ACTOR = "caffein.dev/ebay-sold-listings";
 
-// Build a search query from postcard fields
-function buildSearchQuery(postcard: {
-  title: string;
-  era: string;
-  locationDepicted: string | null;
-  category: string;
-}): string {
-  const parts = ["vintage postcard"];
+// Build a search query using AI analysis + postcard fields
+function buildSearchQuery(
+  postcard: { title: string; era: string; locationDepicted: string | null; category: string },
+  aiAnalysis: Record<string, unknown> | null
+): string {
+  // If AI analysis exists, build a much better query from classification
+  if (aiAnalysis) {
+    const c = aiAnalysis.classification as Record<string, unknown> | undefined;
+    if (c) {
+      const parts: string[] = [];
 
-  // Add the most distinctive info
+      // Card type (e.g., "RPPC", "linen", "chrome")
+      const cardType = c.card_type as { value?: string } | undefined;
+      if (cardType?.value && !cardType.value.startsWith("UNCERTAIN")) {
+        parts.push(cardType.value.replace(/_/g, " "));
+      }
+
+      // Location
+      const loc = c.location as { state?: string; city?: string } | undefined;
+      if (loc?.state) parts.push(loc.state);
+      if (loc?.city) parts.push(loc.city);
+
+      // Primary subject
+      const subject = c.primary_subject as string | undefined;
+      if (subject) {
+        // Strip overly long AI descriptions down to key terms
+        const cleaned = subject
+          .replace(/postcard|featuring|multiple|various|showing/gi, "")
+          .trim()
+          .split(/\s+/)
+          .slice(0, 6)
+          .join(" ");
+        if (cleaned) parts.push(cleaned);
+      }
+
+      // Subject tags (pick most specific ones)
+      const tags = c.subject_tags as string[] | undefined;
+      if (tags && tags.length > 0) {
+        const specific = tags.filter(
+          (t) => !["exterior", "landscape", "nature"].includes(t)
+        );
+        if (specific.length > 0) parts.push(specific.slice(0, 2).join(" "));
+      }
+
+      if (parts.length > 0) {
+        return ("vintage postcard " + parts.join(" ")).replace(/\s+/g, " ").trim();
+      }
+    }
+  }
+
+  // Fallback: use postcard fields
+  const parts = ["vintage postcard"];
   if (postcard.locationDepicted) {
     parts.push(postcard.locationDepicted);
   } else if (postcard.title) {
-    // Use title but strip generic words
     const cleaned = postcard.title
       .replace(/postcard|vintage|antique|greetings from/gi, "")
       .trim();
     if (cleaned) parts.push(cleaned);
   }
-
-  if (postcard.era) {
-    parts.push(postcard.era);
-  }
+  if (postcard.era) parts.push(postcard.era);
 
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
@@ -144,8 +182,11 @@ Respond in this exact JSON format only, no other text:
     ],
   });
 
-  const text =
+  const raw =
     message.content[0].type === "text" ? message.content[0].text : "";
+
+  // Strip markdown code fences if present
+  const text = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
 
   try {
     return JSON.parse(text);
@@ -154,7 +195,7 @@ Respond in this exact JSON format only, no other text:
       quick: 0,
       recommended: 0,
       collector: 0,
-      reasoning: text || "Unable to generate pricing recommendation.",
+      reasoning: raw || "Unable to generate pricing recommendation.",
     };
   }
 }
@@ -178,8 +219,23 @@ export async function POST(
   }
 
   try {
+    // Load AI analysis if available for better search queries
+    const aiResearch = db
+      .select()
+      .from(researchResults)
+      .where(eq(researchResults.postcardId, parseInt(id)))
+      .all()
+      .find((r) => r.source === "ai_analysis");
+
+    let aiAnalysis: Record<string, unknown> | null = null;
+    if (aiResearch) {
+      try {
+        aiAnalysis = JSON.parse(aiResearch.data);
+      } catch { /* ignore */ }
+    }
+
     // Step 1: Build search query and fetch eBay comps
-    const query = buildSearchQuery(postcard);
+    const query = buildSearchQuery(postcard, aiAnalysis);
     let comps: unknown[] = [];
 
     try {
