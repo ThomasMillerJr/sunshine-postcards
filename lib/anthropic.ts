@@ -439,3 +439,77 @@ export async function analyzePostcard(images: PostcardImage[]): Promise<Analysis
 
   return toolBlock.input as AnalysisResult;
 }
+
+// --- Crop Detection ---
+
+export interface CropBox {
+  x: number;      // left edge, 0-100%
+  y: number;      // top edge, 0-100%
+  width: number;  // width, 0-100%
+  height: number; // height, 0-100%
+}
+
+const CROP_TOOL: Anthropic.Tool = {
+  name: "postcard_crop",
+  description: "Return the bounding box of the postcard within the photograph.",
+  input_schema: {
+    type: "object" as const,
+    required: ["x", "y", "width", "height"],
+    properties: {
+      x: { type: "number", description: "Left edge as percentage of image width (0-100)" },
+      y: { type: "number", description: "Top edge as percentage of image height (0-100)" },
+      width: { type: "number", description: "Width as percentage of image width (0-100)" },
+      height: { type: "number", description: "Height as percentage of image height (0-100)" },
+    },
+  },
+};
+
+export async function detectCrop(filePath: string): Promise<CropBox | null> {
+  const client = getClient();
+  const ext = filePath.split(".").pop() || "jpg";
+  const buffer = await readFile(path.join(UPLOADS_DIR, filePath));
+  const base64 = buffer.toString("base64");
+
+  try {
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 200,
+      tools: [CROP_TOOL],
+      tool_choice: { type: "tool", name: "postcard_crop" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: { type: "base64", media_type: getMediaType(ext), data: base64 },
+            },
+            {
+              type: "text",
+              text: "Find the postcard in this photograph. Return the tightest bounding box that contains the entire postcard, as percentage coordinates (0-100) of the full image dimensions. If the postcard fills the entire image, return x:0, y:0, width:100, height:100.",
+            },
+          ],
+        },
+      ],
+    });
+
+    const toolBlock = response.content.find((b) => b.type === "tool_use");
+    if (!toolBlock || toolBlock.type !== "tool_use") return null;
+
+    const box = toolBlock.input as CropBox;
+
+    // Sanity check: if crop is basically the whole image, don't bother
+    if (box.width >= 95 && box.height >= 95 && box.x <= 3 && box.y <= 3) return null;
+
+    // Clamp values
+    box.x = Math.max(0, Math.min(100, box.x));
+    box.y = Math.max(0, Math.min(100, box.y));
+    box.width = Math.max(10, Math.min(100 - box.x, box.width));
+    box.height = Math.max(10, Math.min(100 - box.y, box.height));
+
+    return box;
+  } catch (err) {
+    console.error("Crop detection failed:", err);
+    return null;
+  }
+}

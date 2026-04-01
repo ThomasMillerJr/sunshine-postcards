@@ -14,8 +14,25 @@ interface Postcard {
   estimatedValue: number | null;
   createdAt: string;
   thumbnailImageId: number | null;
+  thumbnailCropBox: string | null;
   verdict: string | null;
   verdictLabel: string | null;
+}
+
+function cropStyle(cropBox: string | null): React.CSSProperties | undefined {
+  if (!cropBox) return undefined;
+  try {
+    const { x, y, width, height } = JSON.parse(cropBox);
+    const top = y;
+    const right = 100 - (x + width);
+    const bottom = 100 - (y + height);
+    const left = x;
+    return {
+      clipPath: `inset(${top}% ${right}% ${bottom}% ${left}%)`,
+      transform: `scale(${100 / Math.max(width, height) * 100 / 100})`,
+      transformOrigin: `${x + width / 2}% ${y + height / 2}%`,
+    };
+  } catch { return undefined; }
 }
 
 export default function InventoryPage() {
@@ -159,7 +176,7 @@ export default function InventoryPage() {
             >
               <div className="aspect-[4/3] bg-[#F0EBE3] flex items-center justify-center overflow-hidden">
                 {pc.thumbnailImageId ? (
-                  <img src={`/api/images/${pc.thumbnailImageId}`} alt={pc.title} className="w-full h-full object-cover" />
+                  <img src={`/api/images/${pc.thumbnailImageId}`} alt={pc.title} className="w-full h-full object-cover" style={cropStyle(pc.thumbnailCropBox)} />
                 ) : (
                   <span className="text-2xl text-[#D4CFC6]">&#128238;</span>
                 )}
@@ -212,7 +229,7 @@ export default function InventoryPage() {
             >
               <div className="w-10 h-7 rounded bg-[#F0EBE3] flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden">
                 {pc.thumbnailImageId ? (
-                  <img src={`/api/images/${pc.thumbnailImageId}`} alt={pc.title} className="w-full h-full object-cover" />
+                  <img src={`/api/images/${pc.thumbnailImageId}`} alt={pc.title} className="w-full h-full object-cover" style={cropStyle(pc.thumbnailCropBox)} />
                 ) : (
                   <span className="text-xs text-[#D4CFC6]">&#128238;</span>
                 )}

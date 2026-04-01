@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { postcardImages } from "@/lib/schema";
+import { eq } from "drizzle-orm";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
+import { detectCrop } from "@/lib/anthropic";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
@@ -47,6 +49,17 @@ export async function POST(request: NextRequest) {
     })
     .returning()
     .all();
+
+  // Fire-and-forget crop detection
+  detectCrop(filename).then((crop) => {
+    if (crop) {
+      const db = getDb();
+      db.update(postcardImages)
+        .set({ cropBox: JSON.stringify(crop) })
+        .where(eq(postcardImages.id, result[0].id))
+        .run();
+    }
+  }).catch((err) => console.error("Crop detection failed:", err));
 
   return NextResponse.json(result[0], { status: 201 });
 }

@@ -24,6 +24,7 @@ export const postcardImages = sqliteTable("postcard_images", {
   side: text("side").notNull(),
   filePath: text("file_path").notNull(),
   originalFilename: text("original_filename").notNull(),
+  cropBox: text("crop_box"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 

@@ -15,7 +15,7 @@ interface PostcardData {
   publisher: string | null;
   estimatedValue: number | null;
   notes: string | null;
-  images: { id: number; side: string; filePath: string }[];
+  images: { id: number; side: string; filePath: string; cropBox: string | null }[];
   transactions: {
     id: number;
     status: string;
@@ -25,6 +25,23 @@ interface PostcardData {
     profit: number | null;
   }[];
   research: { id: number; source: string; data: string; createdAt: string }[];
+}
+
+function cropStyle(cropBox: string | null): React.CSSProperties | undefined {
+  if (!cropBox) return undefined;
+  try {
+    const { x, y, width, height } = JSON.parse(cropBox);
+    const top = y;
+    const right = 100 - (x + width);
+    const bottom = 100 - (y + height);
+    const left = x;
+    return {
+      clipPath: `inset(${top}% ${right}% ${bottom}% ${left}%)`,
+      // Scale up to fill the container after clipping
+      transform: `scale(${100 / Math.max(width, height) * 100 / 100})`,
+      transformOrigin: `${x + width / 2}% ${y + height / 2}%`,
+    };
+  } catch { return undefined; }
 }
 
 function AnalysisDisplay({ data }: { data: string }) {
@@ -307,6 +324,7 @@ export default function PostcardDetail() {
                   src={`/api/images/${postcard.images[activeImage]?.id}`}
                   alt={postcard.images[activeImage]?.side}
                   className="w-full h-full object-cover"
+                  style={cropStyle(postcard.images[activeImage]?.cropBox)}
                 />
               </div>
               {postcard.images.length > 1 && (

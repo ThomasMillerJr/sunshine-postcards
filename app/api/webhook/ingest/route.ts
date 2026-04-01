@@ -4,7 +4,7 @@ import { postcards, postcardImages, researchResults } from "@/lib/schema";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
-import { analyzePostcard } from "@/lib/anthropic";
+import { analyzePostcard, detectCrop } from "@/lib/anthropic";
 import { eq, sql } from "drizzle-orm";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
@@ -81,6 +81,17 @@ export async function POST(request: NextRequest) {
       .all();
 
     savedImages.push(image);
+
+    // Fire-and-forget crop detection per image
+    detectCrop(filename).then((crop) => {
+      if (crop) {
+        const db = getDb();
+        db.update(postcardImages)
+          .set({ cropBox: JSON.stringify(crop) })
+          .where(eq(postcardImages.id, image.id))
+          .run();
+      }
+    }).catch((err) => console.error("Crop detection failed:", err));
   }
 
   // Fire-and-forget: trigger AI analysis in the background

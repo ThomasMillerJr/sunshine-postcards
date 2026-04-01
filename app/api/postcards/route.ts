@@ -19,10 +19,10 @@ export async function GET(request: NextRequest) {
 
   // Attach first image (prefer front) for each postcard
   const allImages = db.select().from(postcardImages).all();
-  const imageMap = new Map<number, number>();
+  const imageMap = new Map<number, { id: number; cropBox: string | null }>();
   for (const img of allImages) {
     if (!imageMap.has(img.postcardId) || img.side === "front") {
-      imageMap.set(img.postcardId, img.id);
+      imageMap.set(img.postcardId, { id: img.id, cropBox: img.cropBox });
     }
   }
 
@@ -45,7 +45,8 @@ export async function GET(request: NextRequest) {
 
   const withThumbnails = results.map((p) => ({
     ...p,
-    thumbnailImageId: imageMap.get(p.id) ?? null,
+    thumbnailImageId: imageMap.get(p.id)?.id ?? null,
+    thumbnailCropBox: imageMap.get(p.id)?.cropBox ?? null,
     verdict: verdictMap.get(p.id)?.verdict ?? null,
     verdictLabel: verdictMap.get(p.id)?.verdictLabel ?? null,
   }));
