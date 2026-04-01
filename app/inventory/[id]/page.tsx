@@ -27,21 +27,35 @@ interface PostcardData {
   research: { id: number; source: string; data: string; createdAt: string }[];
 }
 
-function cropStyle(cropBox: string | null): React.CSSProperties | undefined {
-  if (!cropBox) return undefined;
+function CroppedImg({ src, alt, cropBox, className }: { src: string; alt: string; cropBox?: string | null; className?: string }) {
+  if (!cropBox) {
+    return <img src={src} alt={alt} className={className || "w-full h-full object-cover"} />;
+  }
   try {
     const { x, y, width, height } = JSON.parse(cropBox);
-    const top = y;
-    const right = 100 - (x + width);
-    const bottom = 100 - (y + height);
-    const left = x;
-    return {
-      clipPath: `inset(${top}% ${right}% ${bottom}% ${left}%)`,
-      // Scale up to fill the container after clipping
-      transform: `scale(${100 / Math.max(width, height) * 100 / 100})`,
-      transformOrigin: `${x + width / 2}% ${y + height / 2}%`,
-    };
-  } catch { return undefined; }
+    // Scale = how much bigger the full image is vs the crop region
+    const scaleX = 100 / width;
+    const scaleY = 100 / height;
+    // Position the image so the crop region's center aligns with the container center
+    const posX = -(x * scaleX) + (100 - width * scaleX) / 2;
+    const posY = -(y * scaleY) + (100 - height * scaleY) / 2;
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className={className || "absolute"}
+        style={{
+          width: `${scaleX * 100}%`,
+          height: `${scaleY * 100}%`,
+          left: `${posX}%`,
+          top: `${posY}%`,
+          objectFit: "cover",
+        }}
+      />
+    );
+  } catch {
+    return <img src={src} alt={alt} className={className || "w-full h-full object-cover"} />;
+  }
 }
 
 function AnalysisDisplay({ data }: { data: string }) {
@@ -319,12 +333,11 @@ export default function PostcardDetail() {
         <div className="w-full sm:w-56 flex-shrink-0">
           {postcard.images.length > 0 ? (
             <>
-              <div className="aspect-[4/3] rounded-xl overflow-hidden bg-[#F0EBE3] mb-2">
-                <img
+              <div className="aspect-[4/3] rounded-xl overflow-hidden bg-[#F0EBE3] mb-2 relative">
+                <CroppedImg
                   src={`/api/images/${postcard.images[activeImage]?.id}`}
                   alt={postcard.images[activeImage]?.side}
-                  className="w-full h-full object-cover"
-                  style={cropStyle(postcard.images[activeImage]?.cropBox)}
+                  cropBox={postcard.images[activeImage]?.cropBox}
                 />
               </div>
               {postcard.images.length > 1 && (

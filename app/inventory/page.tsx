@@ -19,20 +19,33 @@ interface Postcard {
   verdictLabel: string | null;
 }
 
-function cropStyle(cropBox: string | null): React.CSSProperties | undefined {
-  if (!cropBox) return undefined;
+function CroppedImg({ src, alt, cropBox, className }: { src: string; alt: string; cropBox?: string | null; className?: string }) {
+  if (!cropBox) {
+    return <img src={src} alt={alt} className={className || "w-full h-full object-cover"} />;
+  }
   try {
     const { x, y, width, height } = JSON.parse(cropBox);
-    const top = y;
-    const right = 100 - (x + width);
-    const bottom = 100 - (y + height);
-    const left = x;
-    return {
-      clipPath: `inset(${top}% ${right}% ${bottom}% ${left}%)`,
-      transform: `scale(${100 / Math.max(width, height) * 100 / 100})`,
-      transformOrigin: `${x + width / 2}% ${y + height / 2}%`,
-    };
-  } catch { return undefined; }
+    const scaleX = 100 / width;
+    const scaleY = 100 / height;
+    const posX = -(x * scaleX) + (100 - width * scaleX) / 2;
+    const posY = -(y * scaleY) + (100 - height * scaleY) / 2;
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className={className || "absolute"}
+        style={{
+          width: `${scaleX * 100}%`,
+          height: `${scaleY * 100}%`,
+          left: `${posX}%`,
+          top: `${posY}%`,
+          objectFit: "cover",
+        }}
+      />
+    );
+  } catch {
+    return <img src={src} alt={alt} className={className || "w-full h-full object-cover"} />;
+  }
 }
 
 export default function InventoryPage() {
@@ -174,9 +187,9 @@ export default function InventoryPage() {
               href={`/inventory/${pc.id}`}
               className="bg-white rounded-xl border border-[#FFF0D4] shadow-[0_2px_8px_rgba(247,183,51,0.06)] overflow-hidden hover:-translate-y-1 hover:shadow-[0_6px_20px_rgba(0,0,0,0.06)] transition-all"
             >
-              <div className="aspect-[4/3] bg-[#F0EBE3] flex items-center justify-center overflow-hidden">
+              <div className="aspect-[4/3] bg-[#F0EBE3] flex items-center justify-center overflow-hidden relative">
                 {pc.thumbnailImageId ? (
-                  <img src={`/api/images/${pc.thumbnailImageId}`} alt={pc.title} className="w-full h-full object-cover" style={cropStyle(pc.thumbnailCropBox)} />
+                  <CroppedImg src={`/api/images/${pc.thumbnailImageId}`} alt={pc.title} cropBox={pc.thumbnailCropBox} />
                 ) : (
                   <span className="text-2xl text-[#D4CFC6]">&#128238;</span>
                 )}
@@ -227,9 +240,9 @@ export default function InventoryPage() {
                 i % 2 === 0 ? "bg-white" : "bg-[#FFFDF8]"
               }`}
             >
-              <div className="w-10 h-7 rounded bg-[#F0EBE3] flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden">
+              <div className="w-10 h-7 rounded bg-[#F0EBE3] flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden relative">
                 {pc.thumbnailImageId ? (
-                  <img src={`/api/images/${pc.thumbnailImageId}`} alt={pc.title} className="w-full h-full object-cover" style={cropStyle(pc.thumbnailCropBox)} />
+                  <CroppedImg src={`/api/images/${pc.thumbnailImageId}`} alt={pc.title} cropBox={pc.thumbnailCropBox} />
                 ) : (
                   <span className="text-xs text-[#D4CFC6]">&#128238;</span>
                 )}
