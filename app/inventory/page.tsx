@@ -14,6 +14,8 @@ interface Postcard {
   estimatedValue: number | null;
   createdAt: string;
   thumbnailImageId: number | null;
+  verdict: string | null;
+  verdictLabel: string | null;
 }
 
 export default function InventoryPage() {
@@ -171,6 +173,18 @@ export default function InventoryPage() {
                   <span className="text-sm font-bold text-[#E8634A]">
                     {pc.estimatedValue ? `$${pc.estimatedValue.toFixed(0)}` : "\u2014"}
                   </span>
+                  {pc.verdict && (
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                      pc.verdict === "collector" ? "bg-[#E8F5E9] text-[#2E7D32]" :
+                      pc.verdict === "moderate" ? "bg-[#FFF4D6] text-[#8A6A10]" :
+                      pc.verdict === "common" ? "bg-[#F0EBE3] text-[#8A8278]" :
+                      "bg-[#F5F0EA] text-[#B8B0A4]"
+                    }`}>
+                      {pc.verdict === "collector" ? "Collector" :
+                       pc.verdict === "moderate" ? "Moderate" :
+                       pc.verdict === "common" ? "Common" : "?"}
+                    </span>
+                  )}
                 </div>
               </div>
             </Link>

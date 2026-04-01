@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { postcards, postcardImages } from "@/lib/schema";
+import { postcards, postcardImages, researchResults } from "@/lib/schema";
 import { desc, eq, sql } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
@@ -26,9 +26,28 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Attach latest verdict for each postcard
+  const allResearch = db
+    .select()
+    .from(researchResults)
+    .all()
+    .filter((r) => r.source === "price_recommendation");
+
+  const verdictMap = new Map<number, { verdict: string; verdictLabel: string }>();
+  for (const r of allResearch) {
+    try {
+      const data = JSON.parse(r.data);
+      if (data.verdict) {
+        verdictMap.set(r.postcardId, { verdict: data.verdict, verdictLabel: data.verdictLabel || "" });
+      }
+    } catch { /* ignore */ }
+  }
+
   const withThumbnails = results.map((p) => ({
     ...p,
     thumbnailImageId: imageMap.get(p.id) ?? null,
+    verdict: verdictMap.get(p.id)?.verdict ?? null,
+    verdictLabel: verdictMap.get(p.id)?.verdictLabel ?? null,
   }));
 
   const countResult = db
