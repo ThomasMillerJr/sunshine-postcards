@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     id: img.id,
     side: img.side,
     filePath: img.filePath,
-  }))).then((analysis) => {
+  }))).then(async (analysis) => {
     const db = getDb();
     db.insert(researchResults)
       .values({
@@ -143,6 +143,17 @@ export async function POST(request: NextRequest) {
         .set(updates)
         .where(eq(postcards.id, postcard.id))
         .run();
+    }
+    // Chain: trigger eBay research after analysis completes
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3005}`;
+      await fetch(`${baseUrl}/api/research/${postcard.id}`, {
+        method: "POST",
+        headers: { "x-webhook-secret": process.env.WEBHOOK_SECRET || "" },
+      });
+      console.log(`Auto-research completed for postcard #${postcard.id}`);
+    } catch (researchErr) {
+      console.error(`Auto-research failed for postcard #${postcard.id}:`, researchErr);
     }
   }).catch((err) => {
     console.error(`Auto-analysis failed for postcard #${postcard.id}:`, err);

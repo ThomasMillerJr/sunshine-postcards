@@ -340,6 +340,13 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Auth: accept session cookie OR webhook secret (for internal calls from ingest)
+  const secret = request.headers.get("x-webhook-secret");
+  const cookie = request.cookies.get("sunshine-session")?.value;
+  if (!cookie && secret !== process.env.WEBHOOK_SECRET) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
   const db = getDb();
 
