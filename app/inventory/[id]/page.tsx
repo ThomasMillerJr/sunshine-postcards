@@ -560,6 +560,7 @@ export default function PostcardDetail() {
                     const endedAt = (item.endedAt as string) || null;
                     const relevance = (item.relevance as number) ?? null;
                     const reason = (item.matchReason as string) || "";
+                    const isLens = item.lensMatch === true;
                     const displayPrice = soldPrice > 0 ? soldPrice : totalPrice;
                     const dateStr = endedAt ? new Date(endedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
                     return (
@@ -577,6 +578,11 @@ export default function PostcardDetail() {
                               {relevance}
                             </span>
                           )}
+                          {isLens && (
+                            <span className="flex-shrink-0 text-[9px] font-medium bg-[#E3F2FD] text-[#1565C0] px-1.5 py-0.5 rounded">
+                              Visual
+                            </span>
+                          )}
                           {url ? (
                             <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-[#2D2A26] hover:text-[#E8634A] truncate flex-1" title={reason}>
                               {title}
@@ -585,7 +591,7 @@ export default function PostcardDetail() {
                             <span className="text-sm text-[#2D2A26] truncate flex-1" title={reason}>{title}</span>
                           )}
                           <span className="text-sm font-bold text-[#2E7D32] flex-shrink-0">
-                            {displayPrice > 0 ? `$${displayPrice.toFixed(2)}` : "\u2014"}
+                            {displayPrice > 0 ? `$${displayPrice.toFixed(2)}` : isLens ? "Listed" : "\u2014"}
                           </span>
                         </div>
                         {(shipping > 0 || dateStr) && (
