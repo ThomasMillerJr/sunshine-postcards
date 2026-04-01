@@ -11,8 +11,11 @@ const APIFY_ACTOR = "caffein.dev/ebay-sold-listings";
 
 interface ScoredComp {
   title: string;
-  price: number;
+  soldPrice: number;
+  totalPrice: number;
+  shippingPrice: number;
   url: string | null;
+  endedAt: string | null;
   relevance: number; // 0-10
   matchReason: string;
 }
@@ -219,9 +222,10 @@ async function scoreAndPrice(
 
   const compsForPrompt = comps.slice(0, 25).map((c, i) => {
     const title = (c.title || c.name || "Unknown") as string;
-    const price = (c.price || c.soldPrice || c.totalPrice || 0) as number;
-    const url = (c.url || c.itemUrl || null) as string | null;
-    return `${i + 1}. "${title}" — $${typeof price === "number" ? price.toFixed(2) : "0.00"}${url ? ` — ${url}` : ""}`;
+    const soldPrice = parseFloat(String(c.soldPrice || c.price || 0)) || 0;
+    const totalPrice = parseFloat(String(c.totalPrice || 0)) || 0;
+    const priceStr = soldPrice > 0 ? `$${soldPrice.toFixed(2)}` : totalPrice > 0 ? `$${totalPrice.toFixed(2)} (incl. shipping)` : "$0.00";
+    return `${i + 1}. "${title}" — ${priceStr}`;
   }).join("\n");
 
   const message = await anthropic.messages.create({
@@ -274,8 +278,11 @@ Price based ONLY on highly relevant comps (relevance 6+). Ignore low-relevance c
     return {
       scored: comps.slice(0, 15).map((c) => ({
         title: (c.title || c.name || "Unknown") as string,
-        price: (c.price || c.soldPrice || 0) as number,
+        soldPrice: parseFloat(String(c.soldPrice || c.price || 0)) || 0,
+        totalPrice: parseFloat(String(c.totalPrice || 0)) || 0,
+        shippingPrice: parseFloat(String(c.shippingPrice || 0)) || 0,
         url: (c.url || c.itemUrl || null) as string | null,
+        endedAt: (c.endedAt as string) || null,
         relevance: 5,
         matchReason: "Scoring unavailable",
       })),
@@ -304,8 +311,11 @@ Price based ONLY on highly relevant comps (relevance 6+). Ignore low-relevance c
     const score = scoredMap.get(i + 1);
     return {
       title: (c.title || c.name || "Unknown") as string,
-      price: (c.price || c.soldPrice || c.totalPrice || 0) as number,
+      soldPrice: parseFloat(String(c.soldPrice || c.price || 0)) || 0,
+      totalPrice: parseFloat(String(c.totalPrice || 0)) || 0,
+      shippingPrice: parseFloat(String(c.shippingPrice || 0)) || 0,
       url: (c.url || c.itemUrl || null) as string | null,
+      endedAt: (c.endedAt as string) || null,
       relevance: score?.relevance ?? 5,
       matchReason: score?.reason ?? "",
     };

@@ -524,27 +524,47 @@ export default function PostcardDetail() {
                   const items = Array.isArray(data) ? data : data.items || [];
                   return items.slice(0, 15).map((item: Record<string, unknown>, i: number) => {
                     const title = (item.title || item.name || "Unknown") as string;
-                    const price = (item.price || item.soldPrice || item.totalPrice || 0) as number;
+                    const soldPrice = parseFloat(String(item.soldPrice || item.price || 0)) || 0;
+                    const totalPrice = parseFloat(String(item.totalPrice || 0)) || 0;
+                    const shipping = parseFloat(String(item.shippingPrice || 0)) || 0;
+                    const url = (item.url as string) || null;
+                    const endedAt = (item.endedAt as string) || null;
                     const relevance = (item.relevance as number) ?? null;
                     const reason = (item.matchReason as string) || "";
+                    const displayPrice = soldPrice > 0 ? soldPrice : totalPrice;
+                    const dateStr = endedAt ? new Date(endedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
                     return (
-                      <div key={i} className="flex items-center gap-2 py-2 border-b border-[#FFF8F0] last:border-0">
-                        {relevance !== null && (
-                          <span
-                            className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                              relevance >= 7 ? "bg-[#E8F5E9] text-[#2E7D32]" :
-                              relevance >= 4 ? "bg-[#FFF4D6] text-[#8A6A10]" :
-                              "bg-[#F0EBE3] text-[#B8B0A4]"
-                            }`}
-                            title={reason}
-                          >
-                            {relevance}
+                      <div key={i} className="py-2 border-b border-[#FFF8F0] last:border-0">
+                        <div className="flex items-center gap-2">
+                          {relevance !== null && (
+                            <span
+                              className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                relevance >= 7 ? "bg-[#E8F5E9] text-[#2E7D32]" :
+                                relevance >= 4 ? "bg-[#FFF4D6] text-[#8A6A10]" :
+                                "bg-[#F0EBE3] text-[#B8B0A4]"
+                              }`}
+                              title={reason}
+                            >
+                              {relevance}
+                            </span>
+                          )}
+                          {url ? (
+                            <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-[#2D2A26] hover:text-[#E8634A] truncate flex-1" title={reason}>
+                              {title}
+                            </a>
+                          ) : (
+                            <span className="text-sm text-[#2D2A26] truncate flex-1" title={reason}>{title}</span>
+                          )}
+                          <span className="text-sm font-bold text-[#2E7D32] flex-shrink-0">
+                            {displayPrice > 0 ? `$${displayPrice.toFixed(2)}` : "\u2014"}
                           </span>
+                        </div>
+                        {(shipping > 0 || dateStr) && (
+                          <div className="flex items-center gap-2 ml-8 mt-0.5">
+                            {shipping > 0 && <span className="text-[10px] text-[#B8B0A4]">+${shipping.toFixed(2)} ship</span>}
+                            {dateStr && <span className="text-[10px] text-[#B8B0A4]">Sold {dateStr}</span>}
+                          </div>
                         )}
-                        <span className="text-sm text-[#2D2A26] truncate flex-1" title={reason}>{title}</span>
-                        <span className="text-sm font-bold text-[#2E7D32] flex-shrink-0">
-                          {typeof price === "number" && price > 0 ? `$${price.toFixed(2)}` : "\u2014"}
-                        </span>
                       </div>
                     );
                   });
