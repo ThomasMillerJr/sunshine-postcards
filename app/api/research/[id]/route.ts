@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { postcards, researchResults } from "@/lib/schema";
+import { postcards, postcardImages, researchResults } from "@/lib/schema";
 import { eq, sql } from "drizzle-orm";
+import { readFile } from "fs/promises";
+import path from "path";
 import Anthropic from "@anthropic-ai/sdk";
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 const APIFY_ACTOR = "caffein.dev/ebay-sold-listings";
+const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
 // --- Types ---
 
@@ -154,6 +157,109 @@ async function fetchEbayComps(query: string, count: number = 15): Promise<Record
   return dataRes.json();
 }
 
+// --- Google Lens Visual Search ---
+
+async function uploadImageToApify(filePath: string): Promise<string> {
+  const buffer = await readFile(path.join(UPLOADS_DIR, filePath));
+  const ext = filePath.split(".").pop() || "jpg";
+  const contentType = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" }[ext] || "image/jpeg";
+
+  // Create a temporary key-value store
+  const storeRes = await fetch(`https://api.apify.com/v2/key-value-stores?token=${APIFY_TOKEN}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: `postcard-tmp-${Date.now()}` }),
+  });
+  if (!storeRes.ok) throw new Error("Failed to create KV store");
+  const store = await storeRes.json();
+  const storeId = store.data?.id;
+
+  // Upload the image
+  const uploadRes = await fetch(
+    `https://api.apify.com/v2/key-value-stores/${storeId}/records/image?token=${APIFY_TOKEN}`,
+    { method: "PUT", headers: { "Content-Type": contentType }, body: buffer }
+  );
+  if (!uploadRes.ok) throw new Error("Failed to upload image to KV store");
+
+  // Public URL
+  return `https://api.apify.com/v2/key-value-stores/${storeId}/records/image`;
+}
+
+async function googleLensSearch(imageUrl: string): Promise<Record<string, unknown>[]> {
+  const runRes = await fetch(
+    `https://api.apify.com/v2/acts/borderline~google-lens/runs?token=${APIFY_TOKEN}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        searchTypes: ["exact-match", "visual-match"],
+        imageUrls: [{ url: imageUrl }],
+        language: "en",
+      }),
+    }
+  );
+
+  if (!runRes.ok) throw new Error(`Google Lens run failed: ${runRes.status}`);
+
+  const run = await runRes.json();
+  const runId = run.data?.id;
+  if (!runId) throw new Error("No run ID from Google Lens");
+
+  // Poll for completion (Lens can take up to 3 minutes)
+  const maxWait = 180_000;
+  const start = Date.now();
+  let status = run.data?.status;
+
+  while (status !== "SUCCEEDED" && status !== "FAILED" && status !== "ABORTED") {
+    if (Date.now() - start > maxWait) throw new Error("Google Lens timed out");
+    await new Promise((r) => setTimeout(r, 3000));
+    const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`);
+    const statusData = await statusRes.json();
+    status = statusData.data?.status;
+  }
+
+  if (status !== "SUCCEEDED") throw new Error(`Google Lens ${status}`);
+
+  const datasetId = run.data?.defaultDatasetId;
+  const dataRes = await fetch(
+    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=50`
+  );
+  if (!dataRes.ok) throw new Error("Failed to fetch Lens results");
+
+  const results = await dataRes.json();
+
+  // Filter for eBay results and normalize
+  // Lens returns: [{  "exact-match": { results: [...] } }, { "visual-match": { results: [...] } }]
+  const ebayResults: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+
+  for (const item of results) {
+    const matchSets = [
+      ...(item["exact-match"]?.results || []),
+      ...(item["visual-match"]?.results || []),
+    ];
+
+    for (const match of matchSets) {
+      const url = (match.link || match.url || "") as string;
+      const title = (match.title || "") as string;
+
+      if (url.includes("ebay.com") && title && !seen.has(url)) {
+        seen.add(url);
+        ebayResults.push({
+          title,
+          url,
+          source: match.source || "Google Lens",
+          thumbnail: match.thumbnail || null,
+          price: match.price || null,
+          lensMatch: true,
+        });
+      }
+    }
+  }
+
+  return ebayResults;
+}
+
 // --- Run tiered search and deduplicate ---
 
 async function tieredSearch(queries: string[]): Promise<Record<string, unknown>[]> {
@@ -224,8 +330,10 @@ async function scoreAndPrice(
     const title = (c.title || c.name || "Unknown") as string;
     const soldPrice = parseFloat(String(c.soldPrice || c.price || 0)) || 0;
     const totalPrice = parseFloat(String(c.totalPrice || 0)) || 0;
-    const priceStr = soldPrice > 0 ? `$${soldPrice.toFixed(2)}` : totalPrice > 0 ? `$${totalPrice.toFixed(2)} (incl. shipping)` : "$0.00";
-    return `${i + 1}. "${title}" — ${priceStr}`;
+    const isLens = c.lensMatch === true;
+    const priceStr = soldPrice > 0 ? `$${soldPrice.toFixed(2)}` : totalPrice > 0 ? `$${totalPrice.toFixed(2)} (incl. shipping)` : (isLens ? "ACTIVE LISTING (no sold price)" : "$0.00");
+    const tag = isLens ? " [VISUAL MATCH]" : " [KEYWORD SEARCH]";
+    return `${i + 1}. "${title}" — ${priceStr}${tag}`;
   }).join("\n");
 
   const message = await anthropic.messages.create({
@@ -234,7 +342,9 @@ async function scoreAndPrice(
     messages: [
       {
         role: "user",
-        content: `You are a vintage postcard pricing expert. Score each eBay sold comparable for relevance to MY postcard, then recommend pricing.
+        content: `You are a vintage postcard pricing expert. Score each comparable for relevance to MY postcard, then recommend pricing.
+
+IMPORTANT: Comparables tagged [VISUAL MATCH] come from Google Lens image search — they are ACTIVE LISTINGS, not sold items. Use them for RELEVANCE SCORING (they confirm the card exists on eBay and show market supply) but NOT for pricing. Comparables tagged [KEYWORD SEARCH] are SOLD listings with actual sale prices — use these for pricing.
 
 MY POSTCARD:
 ${analysisContext || `Title: ${postcard.title}\nEra: ${postcard.era}\nCondition: ${postcard.condition}\nLocation: ${postcard.locationDepicted || "unknown"}\nPublisher: ${postcard.publisher || "unknown"}\nCategory: ${postcard.category}`}
@@ -258,12 +368,12 @@ Respond in this exact JSON format only, no markdown fences, no other text:
 }
 
 Verdict guide:
-- "common": recommended price under $5. Mass-produced, many similar available.
+- "common": recommended price under $5. Mass-produced, many similar available. Many visual matches = high supply.
 - "moderate": recommended $5-15. Some collector interest, decent condition, identifiable location/subject.
-- "collector": recommended $15+. Scarce subject, notable publisher, RPPC, identified photographer, pre-1907, or cross-collectible appeal.
+- "collector": recommended $15+. Scarce subject, notable publisher, RPPC, identified photographer, pre-1907, or cross-collectible appeal. Few or no visual matches = low supply.
 - "unknown": not enough data to judge. Use this sparingly.
 
-Price based ONLY on highly relevant comps (relevance 6+). Ignore low-relevance comps for pricing. If no comps score 6+, estimate based on card characteristics and note low confidence.`,
+Price based ONLY on [KEYWORD SEARCH] comps with relevance 6+ (these have actual sold prices). Use [VISUAL MATCH] comps for relevance scoring and supply assessment only. If no keyword comps score 6+, estimate based on card characteristics and note low confidence.`,
       },
     ],
   });
@@ -374,12 +484,53 @@ export async function POST(
       try { aiAnalysis = JSON.parse(aiResearch.data); } catch { /* ignore */ }
     }
 
-    // Step 1: Build tiered queries and run searches
+    // Step 0: Google Lens visual search (Tier 0 — image-based exact/visual match)
+    let lensResults: Record<string, unknown>[] = [];
+    const images = db
+      .select()
+      .from(postcardImages)
+      .where(eq(postcardImages.postcardId, parseInt(id)))
+      .all();
+    const frontImage = images.find((img) => img.side === "front") || images[0];
+
+    if (frontImage) {
+      try {
+        console.log(`Google Lens: uploading image for postcard #${id}...`);
+        const imageUrl = await uploadImageToApify(frontImage.filePath);
+        console.log(`Google Lens: searching...`);
+        lensResults = await googleLensSearch(imageUrl);
+        console.log(`Google Lens: found ${lensResults.length} eBay results`);
+      } catch (err) {
+        console.error("Google Lens search failed:", err);
+        // Continue with keyword search — Lens is a bonus, not required
+      }
+    }
+
+    // Step 1: Build tiered queries and run keyword searches
     const queries = buildTieredQueries(postcard, aiAnalysis);
-    const comps = await tieredSearch(queries);
+    const keywordComps = await tieredSearch(queries);
+
+    // Merge: Lens results first (they're visual matches), then keyword results, deduped
+    const seen = new Set<string>();
+    const allComps: Record<string, unknown>[] = [];
+
+    for (const item of lensResults) {
+      const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
+      if (!seen.has(key)) {
+        seen.add(key);
+        allComps.push(item);
+      }
+    }
+    for (const item of keywordComps) {
+      const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
+      if (!seen.has(key)) {
+        seen.add(key);
+        allComps.push(item);
+      }
+    }
 
     // Step 2: AI scoring and pricing
-    const { scored, pricing } = await scoreAndPrice(postcard, aiAnalysis, comps);
+    const { scored, pricing } = await scoreAndPrice(postcard, aiAnalysis, allComps);
 
     // Step 3: Store results (delete old first)
     const existingResearch = db
@@ -421,6 +572,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       queries,
+      lensMatches: lensResults.length,
       compsFound: scored.length,
       relevantComps: scored.filter((s) => s.relevance >= 6).length,
       pricing,
