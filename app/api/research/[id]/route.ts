@@ -21,6 +21,7 @@ interface ScoredComp {
   endedAt: string | null;
   relevance: number; // 0-10
   matchReason: string;
+  lensMatch: boolean;
 }
 
 interface PricingResult {
@@ -391,10 +392,11 @@ Price based ONLY on [KEYWORD SEARCH] comps with relevance 6+ (these have actual 
         soldPrice: parseFloat(String(c.soldPrice || c.price || 0)) || 0,
         totalPrice: parseFloat(String(c.totalPrice || 0)) || 0,
         shippingPrice: parseFloat(String(c.shippingPrice || 0)) || 0,
-        url: (c.url || c.itemUrl || null) as string | null,
+        url: (c.url || c.link || c.itemUrl || null) as string | null,
         endedAt: (c.endedAt as string) || null,
         relevance: 5,
         matchReason: "Scoring unavailable",
+        lensMatch: c.lensMatch === true,
       })),
       pricing: {
         verdict: "unknown",
@@ -424,10 +426,11 @@ Price based ONLY on [KEYWORD SEARCH] comps with relevance 6+ (these have actual 
       soldPrice: parseFloat(String(c.soldPrice || c.price || 0)) || 0,
       totalPrice: parseFloat(String(c.totalPrice || 0)) || 0,
       shippingPrice: parseFloat(String(c.shippingPrice || 0)) || 0,
-      url: (c.url || c.itemUrl || null) as string | null,
+      url: (c.url || c.link || c.itemUrl || null) as string | null,
       endedAt: (c.endedAt as string) || null,
       relevance: score?.relevance ?? 5,
       matchReason: score?.reason ?? "",
+      lensMatch: c.lensMatch === true,
     };
   }).sort((a, b) => b.relevance - a.relevance);
 
