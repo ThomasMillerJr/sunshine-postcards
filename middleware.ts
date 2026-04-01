@@ -6,7 +6,7 @@ const SECRET = new TextEncoder().encode(
 );
 const COOKIE_NAME = "sunshine-session";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/verify"];
+const PUBLIC_PATHS = ["/login", "/api/auth/verify", "/api/webhook"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
