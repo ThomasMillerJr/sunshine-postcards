@@ -27,34 +27,32 @@ interface PostcardData {
   research: { id: number; source: string; data: string; createdAt: string }[];
 }
 
-function CroppedImg({ src, alt, cropBox, className }: { src: string; alt: string; cropBox?: string | null; className?: string }) {
+function CroppedImg({ src, alt, cropBox }: { src: string; alt: string; cropBox?: string | null }) {
   if (!cropBox) {
-    return <img src={src} alt={alt} className={className || "w-full h-full object-cover"} />;
+    return <img src={src} alt={alt} className="w-full h-full object-cover" />;
   }
   try {
     const { x, y, width, height } = JSON.parse(cropBox);
-    // Scale = how much bigger the full image is vs the crop region
-    const scaleX = 100 / width;
-    const scaleY = 100 / height;
-    // Position the image so the crop region's center aligns with the container center
-    const posX = -(x * scaleX) + (100 - width * scaleX) / 2;
-    const posY = -(y * scaleY) + (100 - height * scaleY) / 2;
+    // object-position centers on the crop region's midpoint
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+    // object-fit: cover + scale to zoom into the crop region
+    const scale = 100 / Math.min(width, height);
     return (
       <img
         src={src}
         alt={alt}
-        className={className || "absolute"}
         style={{
-          width: `${scaleX * 100}%`,
-          height: `${scaleY * 100}%`,
-          left: `${posX}%`,
-          top: `${posY}%`,
+          width: "100%",
+          height: "100%",
           objectFit: "cover",
+          objectPosition: `${centerX}% ${centerY}%`,
+          transform: `scale(${scale})`,
         }}
       />
     );
   } catch {
-    return <img src={src} alt={alt} className={className || "w-full h-full object-cover"} />;
+    return <img src={src} alt={alt} className="w-full h-full object-cover" />;
   }
 }
 

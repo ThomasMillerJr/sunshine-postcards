@@ -19,32 +19,30 @@ interface Postcard {
   verdictLabel: string | null;
 }
 
-function CroppedImg({ src, alt, cropBox, className }: { src: string; alt: string; cropBox?: string | null; className?: string }) {
+function CroppedImg({ src, alt, cropBox }: { src: string; alt: string; cropBox?: string | null }) {
   if (!cropBox) {
-    return <img src={src} alt={alt} className={className || "w-full h-full object-cover"} />;
+    return <img src={src} alt={alt} className="w-full h-full object-cover" />;
   }
   try {
     const { x, y, width, height } = JSON.parse(cropBox);
-    const scaleX = 100 / width;
-    const scaleY = 100 / height;
-    const posX = -(x * scaleX) + (100 - width * scaleX) / 2;
-    const posY = -(y * scaleY) + (100 - height * scaleY) / 2;
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+    const scale = 100 / Math.min(width, height);
     return (
       <img
         src={src}
         alt={alt}
-        className={className || "absolute"}
         style={{
-          width: `${scaleX * 100}%`,
-          height: `${scaleY * 100}%`,
-          left: `${posX}%`,
-          top: `${posY}%`,
+          width: "100%",
+          height: "100%",
           objectFit: "cover",
+          objectPosition: `${centerX}% ${centerY}%`,
+          transform: `scale(${scale})`,
         }}
       />
     );
   } catch {
-    return <img src={src} alt={alt} className={className || "w-full h-full object-cover"} />;
+    return <img src={src} alt={alt} className="w-full h-full object-cover" />;
   }
 }
 
