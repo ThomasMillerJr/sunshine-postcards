@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sunshine Postcards — Dashboard Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --sun-gold: #F7B733;
+    --sun-gold-light: #FFF4D6;
+    --sun-gold-lighter: #FFFCF5;
+    --coral: #E8634A;
+    --coral-light: #FFF0EB;
+    --text-primary: #2D2A26;
+    --text-secondary: #8A8278;
+    --text-muted: #B8B0A4;
+    --card-bg: #FFFFFF;
+    --card-border: #FFF0D4;
+    --card-shadow: rgba(247, 183, 51, 0.08);
+    --body-bg: #FFFCF5;
+    --font-display: 'DM Serif Display', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--body-bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+
+  /* ===== NAV ===== */
+  nav {
+    background: white;
+    border-bottom: 2px solid var(--card-border);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    height: 64px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-right: 40px;
+  }
+
+  .logo-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--sun-gold), var(--coral));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+  }
+
+  .logo-text {
+    font-family: var(--font-display);
+    font-size: 20px;
+    color: var(--coral);
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 4px;
+    height: 100%;
+    align-items: stretch;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+  }
+
+  .nav-link:hover {
+    color: var(--coral);
+    background: var(--coral-light);
+  }
+
+  .nav-link.active {
+    color: var(--coral);
+    border-bottom-color: var(--coral);
+  }
+
+  .nav-actions {
+    margin-left: auto;
+  }
+
+  .btn-add {
+    background: linear-gradient(135deg, var(--sun-gold), #F0A030);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 2px 8px rgba(247, 183, 51, 0.3);
+    transition: all 0.2s;
+  }
+
+  .btn-add:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(247, 183, 51, 0.4);
+  }
+
+  /* ===== MAIN ===== */
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px;
+  }
+
+  .page-header {
+    margin-bottom: 28px;
+  }
+
+  .page-header h1 {
+    font-family: var(--font-display);
+    font-size: 32px;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .page-header p {
+    color: var(--text-muted);
+    font-size: 15px;
+  }
+
+  /* ===== STATS ===== */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+
+  .stat-card {
+    background: var(--card-bg);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid var(--card-border);
+    box-shadow: 0 2px 12px var(--card-shadow);
+    transition: all 0.2s;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(247, 183, 51, 0.12);
+  }
+
+  .stat-card.highlight {
+    background: linear-gradient(135deg, var(--sun-gold), #F0A030);
+    border: none;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+
+  .stat-card.highlight .stat-label {
+    color: rgba(255, 255, 255, 0.75);
+  }
+
+  .stat-value {
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.1;
+  }
+
+  .stat-card.highlight .stat-value {
+    color: white;
+  }
+
+  .stat-change {
+    font-size: 12px;
+    color: #4CAF50;
+    margin-top: 4px;
+    font-weight: 500;
+  }
+
+  .stat-card.highlight .stat-change {
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  /* ===== SECTIONS ===== */
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .section-header h2 {
+    font-family: var(--font-display);
+    font-size: 22px;
+  }
+
+  .section-header a {
+    font-size: 13px;
+    color: var(--coral);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  /* ===== POSTCARDS GRID ===== */
+  .postcards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+
+  .postcard-card {
+    background: var(--card-bg);
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--card-border);
+    box-shadow: 0 2px 12px var(--card-shadow);
+    transition: all 0.25s;
+    cursor: pointer;
+  }
+
+  .postcard-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+
+  .postcard-img {
+    aspect-ratio: 4/3;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .postcard-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .postcard-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-listed {
+    background: var(--sun-gold);
+    color: white;
+  }
+
+  .badge-sold {
+    background: #4CAF50;
+    color: white;
+  }
+
+  .badge-new {
+    background: var(--coral);
+    color: white;
+  }
+
+  .postcard-info {
+    padding: 12px 14px;
+  }
+
+  .postcard-title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .postcard-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .postcard-price {
+    color: var(--coral);
+    font-weight: 600;
+  }
+
+  /* ===== RECENT ACTIVITY ===== */
+  .activity-list {
+    background: var(--card-bg);
+    border-radius: 16px;
+    border: 1px solid var(--card-border);
+    box-shadow: 0 2px 12px var(--card-shadow);
+    overflow: hidden;
+  }
+
+  .activity-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px;
+    gap: 14px;
+    border-bottom: 1px solid #FFF5E8;
+    transition: background 0.15s;
+  }
+
+  .activity-item:last-child {
+    border-bottom: none;
+  }
+
+  .activity-item:hover {
+    background: var(--sun-gold-lighter);
+  }
+
+  .activity-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-sold { background: #4CAF50; }
+  .dot-listed { background: var(--sun-gold); }
+  .dot-added { background: var(--coral); }
+
+  .activity-text {
+    flex: 1;
+    font-size: 14px;
+  }
+
+  .activity-text strong {
+    color: var(--text-primary);
+  }
+
+  .activity-text span {
+    color: var(--text-secondary);
+  }
+
+  .activity-time {
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .activity-amount {
+    font-weight: 600;
+    font-size: 14px;
+    color: #4CAF50;
+    flex-shrink: 0;
+  }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 768px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .postcards-grid { grid-template-columns: repeat(2, 1fr); }
+    nav { padding: 0 16px; }
+    main { padding: 20px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">
+    <div class="logo-icon">☀</div>
+    <span class="logo-text">Sunshine Postcards</span>
+  </div>
+  <div class="nav-links">
+    <a href="#" class="nav-link active">Dashboard</a>
+    <a href="#" class="nav-link">Inventory</a>
+    <a href="#" class="nav-link">Research</a>
+  </div>
+  <div class="nav-actions">
+    <button class="btn-add">+ Add Postcard</button>
+  </div>
+</nav>
+
+<main>
+  <div class="page-header">
+    <h1>Good afternoon, sunshine!</h1>
+    <p>Here's how your collection is doing today</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Postcards</div>
+      <div class="stat-value">847</div>
+      <div class="stat-change">+12 this week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Currently Listed</div>
+      <div class="stat-value">124</div>
+      <div class="stat-change">23 pending</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Sold This Month</div>
+      <div class="stat-value">31</div>
+      <div class="stat-change">↑ 14% vs last month</div>
+    </div>
+    <div class="stat-card highlight">
+      <div class="stat-label">Revenue</div>
+      <div class="stat-value">$3,290</div>
+      <div class="stat-change">↑ $420 this month</div>
+    </div>
+  </div>
+
+  <!-- Recent Postcards -->
+  <div class="section-header">
+    <h2>Recently Added</h2>
+    <a href="#">View all →</a>
+  </div>
+  <div class="postcards-grid">
+    <div class="postcard-card">
+      <div class="postcard-img" style="background: linear-gradient(135deg, #87CEEB, #4682B4);">
+        <span class="postcard-badge badge-listed">Listed</span>
+      </div>
+      <div class="postcard-info">
+        <div class="postcard-title">Greetings from Miami Beach</div>
+        <div class="postcard-meta">
+          <span>1950s · Excellent</span>
+          <span class="postcard-price">$24.99</span>
+        </div>
+      </div>
+    </div>
+    <div class="postcard-card">
+      <div class="postcard-img" style="background: linear-gradient(135deg, #DEB887, #D2691E);">
+        <span class="postcard-badge badge-new">New</span>
+      </div>
+      <div class="postcard-info">
+        <div class="postcard-title">Grand Canyon Panorama</div>
+        <div class="postcard-meta">
+          <span>1940s · Good</span>
+          <span class="postcard-price">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="postcard-card">
+      <div class="postcard-img" style="background: linear-gradient(135deg, #98FB98, #2E8B57);">
+        <span class="postcard-badge badge-sold">Sold</span>
+      </div>
+      <div class="postcard-info">
+        <div class="postcard-title">Christmas Holly 1952</div>
+        <div class="postcard-meta">
+          <span>1950s · Fair</span>
+          <span class="postcard-price">$8.50</span>
+        </div>
+      </div>
+    </div>
+    <div class="postcard-card">
+      <div class="postcard-img" style="background: linear-gradient(135deg, #FFB6C1, #FF69B4);">
+        <span class="postcard-badge badge-listed">Listed</span>
+      </div>
+      <div class="postcard-info">
+        <div class="postcard-title">Valentine Sweetheart</div>
+        <div class="postcard-meta">
+          <span>1960s · Excellent</span>
+          <span class="postcard-price">$18.00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Activity -->
+  <div class="section-header">
+    <h2>Recent Activity</h2>
+  </div>
+  <div class="activity-list">
+    <div class="activity-item">
+      <div class="activity-dot dot-sold"></div>
+      <div class="activity-text"><strong>Vintage Yellowstone</strong> <span>sold on eBay</span></div>
+      <div class="activity-amount">+$32.00</div>
+      <div class="activity-time">2 hours ago</div>
+    </div>
+    <div class="activity-item">
+      <div class="activity-dot dot-listed"></div>
+      <div class="activity-text"><strong>Route 66 Collection (3)</strong> <span>listed on eBay</span></div>
+      <div class="activity-amount"></div>
+      <div class="activity-time">5 hours ago</div>
+    </div>
+    <div class="activity-item">
+      <div class="activity-dot dot-added"></div>
+      <div class="activity-text"><strong>Hawaii Sunset</strong> <span>added to inventory</span></div>
+      <div class="activity-amount"></div>
+      <div class="activity-time">Yesterday</div>
+    </div>
+    <div class="activity-item">
+      <div class="activity-dot dot-sold"></div>
+      <div class="activity-text"><strong>New York Skyline 1948</strong> <span>sold on eBay</span></div>
+      <div class="activity-amount">+$45.00</div>
+      <div class="activity-time">Yesterday</div>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

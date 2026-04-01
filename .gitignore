@@ -43,3 +43,6 @@ next-env.d.ts
 # Sunshine Postcards
 uploads/
 *.db
+*.db-shm
+*.db-wal
+.superpowers/
