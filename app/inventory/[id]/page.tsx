@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 
-interface Postcard {
+interface PostcardData {
   id: number;
   title: string;
   description: string;
@@ -22,17 +23,17 @@ interface Postcard {
     listingPrice: number | null;
     soldPrice: number | null;
     profit: number | null;
-    listedAt: string | null;
-    soldAt: string | null;
   }[];
+  research: { id: number; source: string; data: string; createdAt: string }[];
 }
 
 export default function PostcardDetail() {
   const { id } = useParams();
   const router = useRouter();
-  const [postcard, setPostcard] = useState<Postcard | null>(null);
+  const [postcard, setPostcard] = useState<PostcardData | null>(null);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState<Partial<Postcard>>({});
+  const [form, setForm] = useState<Record<string, unknown>>({});
+  const [activeImage, setActiveImage] = useState(0);
 
   useEffect(() => {
     fetch(`/api/postcards/${id}`)
@@ -61,7 +62,7 @@ export default function PostcardDetail() {
     });
     if (res.ok) {
       const updated = await res.json();
-      setPostcard({ ...postcard!, ...updated });
+      setPostcard((prev) => prev ? { ...prev, ...updated } : prev);
       setEditing(false);
     }
   };
@@ -72,121 +73,276 @@ export default function PostcardDetail() {
     router.push("/inventory");
   };
 
-  if (!postcard) return <div className="py-8">Loading...</div>;
+  if (!postcard) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-2 border-[#FFF0D4] border-t-[#F7B733] rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  const fields = [
+    { key: "title", label: "Title" },
+    { key: "description", label: "Description" },
+    { key: "category", label: "Category" },
+    { key: "era", label: "Era" },
+    { key: "condition", label: "Condition" },
+    { key: "locationDepicted", label: "Location" },
+    { key: "publisher", label: "Publisher" },
+    { key: "notes", label: "Notes" },
+  ];
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">{postcard.title || "Untitled"}</h1>
-        <div className="flex gap-2">
-          {editing ? (
+      {/* Back link */}
+      <Link
+        href="/inventory"
+        className="inline-flex items-center gap-1 text-sm text-[#B8B0A4] hover:text-[#E8634A] transition-colors mb-6"
+      >
+        ← Back to Inventory
+      </Link>
+
+      {/* Hero: Image + Info */}
+      <div className="flex gap-6 mb-8 flex-col sm:flex-row">
+        {/* Image section */}
+        <div className="w-full sm:w-56 flex-shrink-0">
+          {postcard.images.length > 0 ? (
             <>
-              <button onClick={save} className="bg-blue-600 text-white px-4 py-2 rounded-lg">
-                Save
-              </button>
-              <button onClick={() => setEditing(false)} className="border px-4 py-2 rounded-lg">
-                Cancel
-              </button>
+              <div className="aspect-[4/3] rounded-xl overflow-hidden bg-[#F0EBE3] mb-2">
+                <img
+                  src={`/api/images/${postcard.images[activeImage]?.id}`}
+                  alt={postcard.images[activeImage]?.side}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              {postcard.images.length > 1 && (
+                <div className="flex gap-2">
+                  {postcard.images.map((img, i) => (
+                    <button
+                      key={img.id}
+                      onClick={() => setActiveImage(i)}
+                      className={`w-12 h-9 rounded-lg overflow-hidden border-2 transition-all ${
+                        i === activeImage ? "border-[#E8634A]" : "border-[#FFF0D4] hover:border-[#F7B733]"
+                      }`}
+                    >
+                      <img src={`/api/images/${img.id}`} alt={img.side} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
             </>
           ) : (
-            <>
-              <button onClick={() => setEditing(true)} className="border px-4 py-2 rounded-lg">
-                Edit
-              </button>
-              <button onClick={remove} className="border border-red-300 text-red-600 px-4 py-2 rounded-lg">
-                Delete
-              </button>
-            </>
+            <div className="aspect-[4/3] rounded-xl bg-[#F0EBE3] flex items-center justify-center">
+              <span className="text-4xl text-[#D4CFC6]">No image</span>
+            </div>
+          )}
+        </div>
+
+        {/* Info section */}
+        <div className="flex-1">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-[#2D2A26]" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>
+                {postcard.title || "Untitled"}
+              </h1>
+              <p className="text-sm text-[#B8B0A4] mt-1">
+                {[postcard.era, postcard.condition, postcard.category].filter(Boolean).join(" \u00b7 ") || "No details"}
+              </p>
+              {postcard.publisher && (
+                <p className="text-xs text-[#B8B0A4] mt-0.5">Publisher: {postcard.publisher}</p>
+              )}
+              {postcard.locationDepicted && (
+                <p className="text-xs text-[#B8B0A4] mt-0.5">Location: {postcard.locationDepicted}</p>
+              )}
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
+              {editing ? (
+                <>
+                  <button
+                    onClick={save}
+                    className="bg-gradient-to-br from-[#F7B733] to-[#F0A030] text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-[0_2px_8px_rgba(247,183,51,0.25)] hover:shadow-[0_4px_12px_rgba(247,183,51,0.4)] transition-all"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => { setEditing(false); setForm(postcard as unknown as Record<string, unknown>); }}
+                    className="border border-[#FFF0D4] px-4 py-2 rounded-lg text-sm text-[#8A8278] hover:border-[#B8B0A4] transition-all"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="border border-[#FFF0D4] px-4 py-2 rounded-lg text-sm text-[#8A8278] hover:border-[#F7B733] hover:text-[#8A6A10] transition-all"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={remove}
+                    className="border border-[#FFF0EB] text-[#E8634A] px-4 py-2 rounded-lg text-sm hover:bg-[#FFF0EB] transition-all"
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Value badge */}
+          <div className="mt-4">
+            {postcard.estimatedValue ? (
+              <span className="inline-block bg-gradient-to-r from-[#F7B733] to-[#F0A030] text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-[0_2px_8px_rgba(247,183,51,0.2)]">
+                Est. ${postcard.estimatedValue.toFixed(2)}
+              </span>
+            ) : (
+              <span className="inline-block bg-[#F5F0EA] text-[#B8B0A4] px-4 py-1.5 rounded-lg text-sm">
+                No estimate yet
+              </span>
+            )}
+          </div>
+
+          {/* Description */}
+          {postcard.description && !editing && (
+            <p className="text-sm text-[#8A8278] mt-4 leading-relaxed">{postcard.description}</p>
+          )}
+          {postcard.notes && !editing && (
+            <p className="text-xs text-[#B8B0A4] mt-2 italic">Note: {postcard.notes}</p>
           )}
         </div>
       </div>
 
-      {/* Images */}
-      <div className="flex gap-4 mb-8">
-        {postcard.images.map((img) => (
-          <img
-            key={img.id}
-            src={`/api/images/${img.id}`}
-            alt={img.side}
-            className="w-64 h-48 object-cover rounded-lg border"
-          />
-        ))}
-        {postcard.images.length === 0 && (
-          <div className="w-64 h-48 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
-            No images
-          </div>
-        )}
-      </div>
-
-      {/* Fields */}
-      <div className="bg-white rounded-lg border p-6 mb-8">
-        <div className="grid grid-cols-2 gap-4">
-          {(["title", "description", "category", "era", "condition", "locationDepicted", "publisher", "notes"] as const).map(
-            (field) => (
-              <div key={field}>
-                <label className="block text-sm text-gray-500 mb-1 capitalize">
-                  {field.replace(/([A-Z])/g, " $1")}
-                </label>
-                {editing ? (
-                  <input
-                    className="w-full border rounded px-3 py-2"
-                    value={(form as Record<string, string>)[field] || ""}
-                    onChange={(e) => setForm({ ...form, [field]: e.target.value })}
-                  />
-                ) : (
-                  <p>{(postcard as unknown as Record<string, string>)[field] || "\u2014"}</p>
-                )}
+      {/* Edit form */}
+      {editing && (
+        <div className="bg-white rounded-xl border border-[#FFF0D4] p-6 mb-8">
+          <div className="grid grid-cols-2 gap-4">
+            {fields.map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-xs uppercase tracking-wider text-[#B8B0A4] mb-1">{label}</label>
+                <input
+                  className="w-full border border-[#FFF0D4] rounded-lg px-3 py-2 text-sm text-[#2D2A26] focus:border-[#F7B733] focus:ring-2 focus:ring-[#F7B73340] focus:outline-none transition-all"
+                  value={(form[key] as string) || ""}
+                  onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                />
               </div>
-            )
-          )}
-          <div>
-            <label className="block text-sm text-gray-500 mb-1">Estimated Value</label>
-            {editing ? (
+            ))}
+            <div>
+              <label className="block text-xs uppercase tracking-wider text-[#B8B0A4] mb-1">Estimated Value ($)</label>
               <input
                 type="number"
                 step="0.01"
-                className="w-full border rounded px-3 py-2"
-                value={form.estimatedValue ?? ""}
+                className="w-full border border-[#FFF0D4] rounded-lg px-3 py-2 text-sm text-[#2D2A26] focus:border-[#F7B733] focus:ring-2 focus:ring-[#F7B73340] focus:outline-none transition-all"
+                value={(form.estimatedValue as number) ?? ""}
                 onChange={(e) =>
                   setForm({ ...form, estimatedValue: e.target.value ? parseFloat(e.target.value) : null })
                 }
               />
-            ) : (
-              <p>{postcard.estimatedValue ? `$${postcard.estimatedValue.toFixed(2)}` : "\u2014"}</p>
-            )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Transactions */}
-      <div className="bg-white rounded-lg border p-6">
-        <h2 className="text-xl font-bold mb-4">Transactions</h2>
-        {postcard.transactions.length === 0 ? (
-          <p className="text-gray-500">No transactions yet.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-gray-500">
-                <th className="pb-2">Status</th>
-                <th className="pb-2">Platform</th>
-                <th className="pb-2">Listed</th>
-                <th className="pb-2">Sold</th>
-                <th className="pb-2">Profit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {postcard.transactions.map((txn) => (
-                <tr key={txn.id} className="border-b">
-                  <td className="py-2 capitalize">{txn.status}</td>
-                  <td className="py-2">{txn.platform}</td>
-                  <td className="py-2">{txn.listingPrice ? `$${txn.listingPrice.toFixed(2)}` : "\u2014"}</td>
-                  <td className="py-2">{txn.soldPrice ? `$${txn.soldPrice.toFixed(2)}` : "\u2014"}</td>
-                  <td className="py-2">{txn.profit ? `$${txn.profit.toFixed(2)}` : "\u2014"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      {/* Research Cards */}
+      <div className="space-y-4">
+        <h2 className="text-lg font-bold text-[#2D2A26]" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>
+          Research
+        </h2>
+
+        {/* AI Analysis */}
+        <div className="bg-white rounded-xl border border-[#FFF0D4] p-5">
+          <h3 className="text-[10px] uppercase tracking-[1.2px] text-[#B8B0A4] font-medium mb-3">AI Analysis</h3>
+          {postcard.research.find((r) => r.source === "ai_analysis") ? (
+            <div className="bg-[#FFFCF5] rounded-lg p-4 text-sm text-[#8A8278] leading-relaxed">
+              {(() => {
+                try {
+                  const data = JSON.parse(postcard.research.find((r) => r.source === "ai_analysis")!.data);
+                  return data.summary || data.analysis || JSON.stringify(data);
+                } catch {
+                  return postcard.research.find((r) => r.source === "ai_analysis")!.data;
+                }
+              })()}
+            </div>
+          ) : (
+            <div className="bg-[#FFFCF5] rounded-lg p-4 text-sm text-[#B8B0A4] text-center">
+              No AI analysis yet. Run analysis to identify this postcard.
+            </div>
+          )}
+        </div>
+
+        {/* eBay Comparables */}
+        <div className="bg-white rounded-xl border border-[#FFF0D4] p-5">
+          <h3 className="text-[10px] uppercase tracking-[1.2px] text-[#B8B0A4] font-medium mb-3">eBay Sold Comparables</h3>
+          {postcard.research.find((r) => r.source === "ebay_sold") ? (
+            <div>
+              {(() => {
+                try {
+                  const data = JSON.parse(postcard.research.find((r) => r.source === "ebay_sold")!.data);
+                  const items = Array.isArray(data) ? data : data.items || [];
+                  return items.map((item: { title: string; price: number }, i: number) => (
+                    <div key={i} className="flex justify-between items-center py-2 border-b border-[#FFF8F0] last:border-0">
+                      <span className="text-sm text-[#2D2A26]">{item.title}</span>
+                      <span className="text-sm font-bold text-[#2E7D32]">${item.price?.toFixed(2)}</span>
+                    </div>
+                  ));
+                } catch {
+                  return <p className="text-sm text-[#8A8278]">{postcard.research.find((r) => r.source === "ebay_sold")!.data}</p>;
+                }
+              })()}
+            </div>
+          ) : (
+            <div className="bg-[#FFFCF5] rounded-lg p-4 text-sm text-[#B8B0A4] text-center">
+              No comparables found yet. Run research to find similar sold listings.
+            </div>
+          )}
+        </div>
+
+        {/* Price Recommendation */}
+        <div className="bg-white rounded-xl border border-[#FFF0D4] p-5">
+          <h3 className="text-[10px] uppercase tracking-[1.2px] text-[#B8B0A4] font-medium mb-3">Price Recommendation</h3>
+          {postcard.research.find((r) => r.source === "price_recommendation") ? (
+            <div className="flex gap-3">
+              {(() => {
+                try {
+                  const data = JSON.parse(postcard.research.find((r) => r.source === "price_recommendation")!.data);
+                  return (
+                    <>
+                      <div className="flex-1 text-center bg-[#FFF8F0] rounded-lg p-3">
+                        <div className="text-[10px] text-[#B8B0A4]">Quick Sale</div>
+                        <div className="text-lg font-bold text-[#2D2A26] mt-1">${data.quick || data.low || "\u2014"}</div>
+                      </div>
+                      <div className="flex-1 text-center bg-gradient-to-b from-[#FFF4D6] to-[#FFE8B0] rounded-lg p-3">
+                        <div className="text-[10px] text-[#8A6A10] font-medium">Recommended</div>
+                        <div className="text-lg font-bold text-[#2D2A26] mt-1">${data.recommended || data.mid || "\u2014"}</div>
+                      </div>
+                      <div className="flex-1 text-center bg-[#FFF8F0] rounded-lg p-3">
+                        <div className="text-[10px] text-[#B8B0A4]">Collector</div>
+                        <div className="text-lg font-bold text-[#2D2A26] mt-1">${data.collector || data.high || "\u2014"}</div>
+                      </div>
+                    </>
+                  );
+                } catch {
+                  return <p className="text-sm text-[#8A8278]">Unable to parse pricing data.</p>;
+                }
+              })()}
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <div className="flex-1 text-center bg-[#FFF8F0] rounded-lg p-3">
+                <div className="text-[10px] text-[#B8B0A4]">Quick Sale</div>
+                <div className="text-lg font-bold text-[#D4CFC6] mt-1">{"\u2014"}</div>
+              </div>
+              <div className="flex-1 text-center bg-[#FFF8F0] rounded-lg p-3">
+                <div className="text-[10px] text-[#B8B0A4]">Recommended</div>
+                <div className="text-lg font-bold text-[#D4CFC6] mt-1">{"\u2014"}</div>
+              </div>
+              <div className="flex-1 text-center bg-[#FFF8F0] rounded-lg p-3">
+                <div className="text-[10px] text-[#B8B0A4]">Collector</div>
+                <div className="text-lg font-bold text-[#D4CFC6] mt-1">{"\u2014"}</div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
