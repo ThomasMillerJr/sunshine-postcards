@@ -384,8 +384,8 @@ export default function PostcardDetail() {
             </div>
           </div>
 
-          {/* Value badge */}
-          <div className="mt-4">
+          {/* Badges */}
+          <div className="mt-4 flex flex-wrap gap-2">
             {postcard.estimatedValue ? (
               <span className="inline-block bg-gradient-to-r from-[#F7B733] to-[#F0A030] text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-[0_2px_8px_rgba(247,183,51,0.2)]">
                 Est. ${postcard.estimatedValue.toFixed(2)}
@@ -395,6 +395,26 @@ export default function PostcardDetail() {
                 No estimate yet
               </span>
             )}
+            {(() => {
+              const pr = postcard.research.find((r) => r.source === "price_recommendation");
+              if (!pr) return null;
+              try {
+                const data = JSON.parse(pr.data);
+                const v = data.verdict as string;
+                const label = data.verdictLabel as string;
+                const colors: Record<string, string> = {
+                  common: "bg-[#F0EBE3] text-[#8A8278]",
+                  moderate: "bg-[#FFF4D6] text-[#8A6A10]",
+                  collector: "bg-[#E8F5E9] text-[#2E7D32]",
+                  unknown: "bg-[#F5F0EA] text-[#B8B0A4]",
+                };
+                return (
+                  <span className={`inline-block px-3 py-1.5 rounded-lg text-sm font-medium ${colors[v] || colors.unknown}`}>
+                    {label}
+                  </span>
+                );
+              } catch { return null; }
+            })()}
           </div>
 
           {/* Description */}
@@ -505,11 +525,25 @@ export default function PostcardDetail() {
                   return items.slice(0, 15).map((item: Record<string, unknown>, i: number) => {
                     const title = (item.title || item.name || "Unknown") as string;
                     const price = (item.price || item.soldPrice || item.totalPrice || 0) as number;
+                    const relevance = (item.relevance as number) ?? null;
+                    const reason = (item.matchReason as string) || "";
                     return (
-                      <div key={i} className="flex justify-between items-center py-2 border-b border-[#FFF8F0] last:border-0">
-                        <span className="text-sm text-[#2D2A26] truncate mr-4">{title}</span>
+                      <div key={i} className="flex items-center gap-2 py-2 border-b border-[#FFF8F0] last:border-0">
+                        {relevance !== null && (
+                          <span
+                            className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                              relevance >= 7 ? "bg-[#E8F5E9] text-[#2E7D32]" :
+                              relevance >= 4 ? "bg-[#FFF4D6] text-[#8A6A10]" :
+                              "bg-[#F0EBE3] text-[#B8B0A4]"
+                            }`}
+                            title={reason}
+                          >
+                            {relevance}
+                          </span>
+                        )}
+                        <span className="text-sm text-[#2D2A26] truncate flex-1" title={reason}>{title}</span>
                         <span className="text-sm font-bold text-[#2E7D32] flex-shrink-0">
-                          {typeof price === "number" && price > 0 ? `$${price.toFixed(2)}` : "—"}
+                          {typeof price === "number" && price > 0 ? `$${price.toFixed(2)}` : "\u2014"}
                         </span>
                       </div>
                     );
@@ -521,7 +555,7 @@ export default function PostcardDetail() {
             </div>
           ) : (
             <div className="bg-[#FFFCF5] rounded-lg p-4 text-sm text-[#B8B0A4] text-center">
-              No comparables found yet. Run research to find similar sold listings.
+              No comparables found yet. Click Find Comps to search eBay sold listings.
             </div>
           )}
         </div>
@@ -530,40 +564,46 @@ export default function PostcardDetail() {
         <div className="bg-white rounded-xl border border-[#FFF0D4] p-5">
           <h3 className="text-[10px] uppercase tracking-[1.2px] text-[#B8B0A4] font-medium mb-3">Price Recommendation</h3>
           {postcard.research.find((r) => r.source === "price_recommendation") ? (
-            <div className="flex gap-3">
+            <div>
               {(() => {
                 try {
                   const data = JSON.parse(postcard.research.find((r) => r.source === "price_recommendation")!.data);
                   return (
                     <>
-                      <div className="flex-1 text-center bg-[#FFF8F0] rounded-lg p-3">
-                        <div className="text-[10px] text-[#B8B0A4]">Quick Sale</div>
-                        <div className="text-lg font-bold text-[#2D2A26] mt-1">${data.quick || data.low || "\u2014"}</div>
+                      <div className="flex gap-3 mb-3">
+                        <div className="flex-1 text-center bg-[#FFF8F0] rounded-lg p-3">
+                          <div className="text-[10px] text-[#B8B0A4]">Quick Sale</div>
+                          <div className="text-lg font-bold text-[#2D2A26] mt-1">
+                            {data.quick > 0 ? `$${data.quick.toFixed(2)}` : "\u2014"}
+                          </div>
+                        </div>
+                        <div className="flex-1 text-center bg-gradient-to-b from-[#FFF4D6] to-[#FFE8B0] rounded-lg p-3">
+                          <div className="text-[10px] text-[#8A6A10] font-medium">Recommended</div>
+                          <div className="text-lg font-bold text-[#2D2A26] mt-1">
+                            {data.recommended > 0 ? `$${data.recommended.toFixed(2)}` : "\u2014"}
+                          </div>
+                        </div>
+                        <div className="flex-1 text-center bg-[#FFF8F0] rounded-lg p-3">
+                          <div className="text-[10px] text-[#B8B0A4]">Collector</div>
+                          <div className="text-lg font-bold text-[#2D2A26] mt-1">
+                            {data.collector > 0 ? `$${data.collector.toFixed(2)}` : "\u2014"}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex-1 text-center bg-gradient-to-b from-[#FFF4D6] to-[#FFE8B0] rounded-lg p-3">
-                        <div className="text-[10px] text-[#8A6A10] font-medium">Recommended</div>
-                        <div className="text-lg font-bold text-[#2D2A26] mt-1">${data.recommended || data.mid || "\u2014"}</div>
-                      </div>
-                      <div className="flex-1 text-center bg-[#FFF8F0] rounded-lg p-3">
-                        <div className="text-[10px] text-[#B8B0A4]">Collector</div>
-                        <div className="text-lg font-bold text-[#2D2A26] mt-1">${data.collector || data.high || "\u2014"}</div>
-                      </div>
+                      {data.bestCompMatch && (
+                        <div className="bg-[#E8F5E9] rounded-lg p-3 mb-2">
+                          <div className="text-[10px] uppercase tracking-wider text-[#2E7D32] font-medium mb-0.5">Best Match</div>
+                          <p className="text-sm text-[#2D2A26]">{data.bestCompMatch}</p>
+                        </div>
+                      )}
+                      {data.reasoning && (
+                        <p className="text-xs text-[#8A8278] italic leading-relaxed">{data.reasoning}</p>
+                      )}
                     </>
                   );
                 } catch {
                   return <p className="text-sm text-[#8A8278]">Unable to parse pricing data.</p>;
                 }
-              })()}
-              {(() => {
-                try {
-                  const data = JSON.parse(postcard.research.find((r) => r.source === "price_recommendation")!.data);
-                  if (data.reasoning) {
-                    return (
-                      <p className="text-xs text-[#8A8278] mt-3 italic leading-relaxed">{data.reasoning}</p>
-                    );
-                  }
-                } catch { /* ignore */ }
-                return null;
               })()}
             </div>
           ) : (
