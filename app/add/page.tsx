@@ -74,7 +74,6 @@ export default function AddPostcard() {
             ref={frontRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={(e) => handleFileAdd(e, "front")}
           />
@@ -109,7 +108,6 @@ export default function AddPostcard() {
             ref={backRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={(e) => handleFileAdd(e, "back")}
           />
