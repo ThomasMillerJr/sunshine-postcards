@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { postcards, postcardImages } from "@/lib/schema";
+import { postcards, postcardImages, researchResults } from "@/lib/schema";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
+import { analyzePostcard } from "@/lib/anthropic";
+import { eq, sql } from "drizzle-orm";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
@@ -80,6 +82,60 @@ export async function POST(request: NextRequest) {
 
     savedImages.push(image);
   }
+
+  // Fire-and-forget: trigger AI analysis in the background
+  analyzePostcard(savedImages.map((img) => ({
+    id: img.id,
+    side: img.side,
+    filePath: img.filePath,
+  }))).then((analysis) => {
+    const db = getDb();
+    db.insert(researchResults)
+      .values({
+        postcardId: postcard.id,
+        source: "ai_analysis",
+        data: JSON.stringify(analysis),
+      })
+      .run();
+
+    // Backfill postcard fields from analysis
+    const c = analysis.classification as Record<string, unknown>;
+    const updates: Record<string, unknown> = {};
+    if (c.era) {
+      const era = c.era as { date_range?: string };
+      if (era.date_range) updates.era = era.date_range;
+    }
+    if (c.condition) {
+      const cond = c.condition as { grade?: string };
+      if (cond.grade) updates.condition = cond.grade;
+    }
+    if (c.publisher) {
+      const pub = c.publisher as { name?: string | null };
+      if (pub.name) updates.publisher = pub.name;
+    }
+    if (c.location) {
+      const loc = c.location as { city?: string | null; state?: string | null; specific_place?: string | null };
+      const parts = [loc.specific_place, loc.city, loc.state].filter(Boolean);
+      if (parts.length > 0) updates.locationDepicted = parts.join(", ");
+    }
+    if (c.card_type) {
+      const ct = c.card_type as { value?: string };
+      if (ct.value) updates.category = ct.value;
+    }
+    if (c.primary_subject) {
+      updates.title = c.primary_subject as string;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      updates.updatedAt = sql`(datetime('now'))`;
+      db.update(postcards)
+        .set(updates)
+        .where(eq(postcards.id, postcard.id))
+        .run();
+    }
+  }).catch((err) => {
+    console.error(`Auto-analysis failed for postcard #${postcard.id}:`, err);
+  });
 
   return NextResponse.json(
     {
