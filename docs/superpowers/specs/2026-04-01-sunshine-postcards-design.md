@@ -82,7 +82,7 @@ Browser → sunshinepostcards.com → Cloudflare Tunnel → Next.js (port 3005)
 | listing_price | REAL      | Price listed at                              |
 | sold_price    | REAL      | Nullable — filled when sold                  |
 | fees          | REAL      | Nullable — platform fees, shipping, etc.     |
-| profit        | REAL      | Nullable — sold_price minus fees             |
+| profit        | REAL      | Nullable — computed: sold_price minus fees (recomputed on update) |
 | listing_url   | TEXT      | Nullable — link to the listing               |
 | listed_at     | TIMESTAMP | Nullable                                     |
 | sold_at       | TIMESTAMP | Nullable                                     |
@@ -114,9 +114,11 @@ Browser → sunshinepostcards.com → Cloudflare Tunnel → Next.js (port 3005)
 ### Inner Layer: 4-Digit PIN
 - PIN stored in `.env.local` as `APP_PIN`
 - PIN entry page with 4 digit inputs
-- On success: set HTTP-only session cookie
+- On success: set signed JWT (HS256, secret from `.env.local`) in an HTTP-only cookie with 7-day expiry
+- Session validation via Next.js middleware — checks JWT on every request, redirects to `/login` if invalid/expired
 - Rate limiting: 5 failed attempts → 15-minute lockout (in-memory counter, resets on server restart)
-- All routes except `/api/auth/verify` require valid session cookie
+- No logout mechanism needed (cookie expires naturally; user can clear browser data)
+- All routes except `/login` and `/api/auth/verify` require valid session cookie
 
 ## UI Pages
 
@@ -137,7 +139,8 @@ Designed for a non-technical user: large click targets, clear labels, warm and f
 ```
 sunshine-postcards/
 ├── app/                        # Next.js App Router
-│   ├── layout.tsx              # Root layout + PIN gate
+│   ├── globals.css             # Tailwind v4 config (@theme)
+│   ├── layout.tsx              # Root layout
 │   ├── page.tsx                # Dashboard
 │   ├── login/
 │   │   └── page.tsx            # PIN entry
@@ -153,15 +156,23 @@ sunshine-postcards/
 │       ├── auth/
 │       │   └── verify/route.ts # PIN verification
 │       ├── postcards/
-│       │   └── route.ts        # CRUD operations
+│       │   ├── route.ts        # List + Create
+│       │   └── [id]/
+│       │       └── route.ts    # Get + Update + Delete
+│       ├── images/
+│       │   └── [id]/
+│       │       └── route.ts    # Serve images from uploads/
 │       ├── upload/
 │       │   └── route.ts        # Photo upload
 │       └── transactions/
-│           └── route.ts        # Transaction CRUD
+│           ├── route.ts        # List + Create
+│           └── [id]/
+│               └── route.ts    # Get + Update + Delete
 ├── lib/
 │   ├── db.ts                   # SQLite connection singleton
-│   ├── auth.ts                 # PIN verification + session helpers
+│   ├── auth.ts                 # PIN verification + JWT session helpers
 │   └── migrations/             # SQL migration files
+├── drizzle.config.ts           # Drizzle ORM config
 ├── uploads/                    # Photo storage (gitignored)
 ├── public/
 ├── ecosystem.config.cjs        # PM2 config (port 3005)
@@ -169,8 +180,12 @@ sunshine-postcards/
 ├── .gitignore
 ├── package.json
 ├── tsconfig.json
-└── tailwind.config.ts
+└── middleware.ts                # Next.js middleware — JWT session check
 ```
+
+## Image Serving
+
+Photos are stored in `uploads/` (outside `public/`, so Next.js won't serve them directly). Images are served via an API route (`/api/images/[id]`) that streams files from disk. This keeps images behind the auth middleware and avoids symlinking into `public/`.
 
 ## Infrastructure
 
