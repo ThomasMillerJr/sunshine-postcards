@@ -27,6 +27,146 @@ interface PostcardData {
   research: { id: number; source: string; data: string; createdAt: string }[];
 }
 
+function AnalysisDisplay({ data }: { data: string }) {
+  try {
+    const analysis = JSON.parse(data);
+    const c = analysis.classification;
+    const v = analysis.visual_inventory;
+    return (
+      <div className="space-y-4">
+        {/* Summary row */}
+        <div className="bg-[#FFFCF5] rounded-lg p-4">
+          <div className="flex flex-wrap gap-2 mb-3">
+            {c?.card_type?.value && (
+              <span className="inline-block bg-[#FFF4D6] text-[#8A6A10] px-2 py-0.5 rounded text-xs font-medium">
+                {c.card_type.value.replace(/_/g, " ")}
+              </span>
+            )}
+            {c?.era?.date_range && (
+              <span className="inline-block bg-[#F0EBE3] text-[#8A8278] px-2 py-0.5 rounded text-xs">
+                {c.era.date_range}
+              </span>
+            )}
+            {c?.condition?.grade && (
+              <span className="inline-block bg-[#E8F5E9] text-[#2E7D32] px-2 py-0.5 rounded text-xs font-medium">
+                {c.condition.grade}
+              </span>
+            )}
+            {c?.suspected_reproduction?.value && (
+              <span className="inline-block bg-[#FFF0EB] text-[#E8634A] px-2 py-0.5 rounded text-xs font-medium">
+                Possible Reproduction
+              </span>
+            )}
+          </div>
+          {v?.front?.image_description && (
+            <p className="text-sm text-[#8A8278] leading-relaxed">{v.front.image_description}</p>
+          )}
+        </div>
+
+        {/* Classification details */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {c?.publisher?.name && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4]">Publisher</div>
+              <div className="text-[#2D2A26]">{c.publisher.name}</div>
+            </div>
+          )}
+          {c?.location?.city && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4]">Location</div>
+              <div className="text-[#2D2A26]">
+                {[c.location.specific_place, c.location.city, c.location.state].filter(Boolean).join(", ")}
+              </div>
+            </div>
+          )}
+          {c?.primary_subject && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4]">Subject</div>
+              <div className="text-[#2D2A26]">{c.primary_subject}</div>
+            </div>
+          )}
+          {c?.condition?.postally_used !== undefined && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4]">Postally Used</div>
+              <div className="text-[#2D2A26]">{c.condition.postally_used ? "Yes" : "No"}</div>
+            </div>
+          )}
+        </div>
+
+        {/* Subject tags */}
+        {c?.subject_tags?.length > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4] mb-1">Tags</div>
+            <div className="flex flex-wrap gap-1">
+              {c.subject_tags.map((tag: string) => (
+                <span key={tag} className="inline-block bg-[#F5F0EA] text-[#8A8278] px-2 py-0.5 rounded text-xs">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Cross-collectible */}
+        {c?.cross_collectible_categories?.length > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4] mb-1">Cross-Collectible Appeal</div>
+            <div className="flex flex-wrap gap-1">
+              {c.cross_collectible_categories.map((cat: string) => (
+                <span key={cat} className="inline-block bg-[#FFF4D6] text-[#8A6A10] px-2 py-0.5 rounded text-xs">
+                  {cat}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Condition defects */}
+        {c?.condition?.defects?.length > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4] mb-1">Defects</div>
+            <ul className="text-xs text-[#8A8278] list-disc list-inside">
+              {c.condition.defects.map((d: string, i: number) => (
+                <li key={i}>{d}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Uncertainty flags */}
+        {analysis.uncertainty_flags?.length > 0 && (
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4] mb-1">Uncertainties</div>
+            <div className="space-y-1">
+              {analysis.uncertainty_flags.map((f: { field: string; issue: string; recommendation: string }, i: number) => (
+                <div key={i} className="bg-[#FFF8F0] rounded p-2 text-xs">
+                  <span className="font-medium text-[#8A6A10]">{f.field}:</span>{" "}
+                  <span className="text-[#8A8278]">{f.issue}</span>
+                  {f.recommendation && (
+                    <div className="text-[#B8B0A4] mt-0.5 italic">{f.recommendation}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Handwritten text */}
+        {v?.back?.handwritten_text?.present && v.back.handwritten_text.transcription && (
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4] mb-1">Handwritten Text</div>
+            <div className="bg-[#FFFCF5] rounded p-3 text-sm text-[#8A8278] italic leading-relaxed">
+              &ldquo;{v.back.handwritten_text.transcription}&rdquo;
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  } catch {
+    return <pre className="text-xs text-[#8A8278] whitespace-pre-wrap overflow-x-auto">{data}</pre>;
+  }
+}
+
 export default function PostcardDetail() {
   const { id } = useParams();
   const router = useRouter();
@@ -36,6 +176,8 @@ export default function PostcardDetail() {
   const [activeImage, setActiveImage] = useState(0);
   const [researching, setResearching] = useState(false);
   const [researchError, setResearchError] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
   const runResearch = async () => {
     setResearching(true);
@@ -53,6 +195,37 @@ export default function PostcardDetail() {
       setResearchError(err instanceof Error ? err.message : "Research failed");
     } finally {
       setResearching(false);
+    }
+  };
+
+  const analyze = async () => {
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    try {
+      const res = await fetch(`/api/postcards/${id}/analyze`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Analysis failed");
+      }
+      const data = await res.json();
+      setPostcard((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...data.postcard,
+              images: prev.images,
+              transactions: prev.transactions,
+              research: [
+                ...prev.research.filter((r) => r.source !== "ai_analysis"),
+                data.analysis,
+              ],
+            }
+          : prev
+      );
+    } catch (err) {
+      setAnalyzeError(err instanceof Error ? err.message : "Analysis failed");
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -291,21 +464,31 @@ export default function PostcardDetail() {
 
         {/* AI Analysis */}
         <div className="bg-white rounded-xl border border-[#FFF0D4] p-5">
-          <h3 className="text-[10px] uppercase tracking-[1.2px] text-[#B8B0A4] font-medium mb-3">AI Analysis</h3>
-          {postcard.research.find((r) => r.source === "ai_analysis") ? (
-            <div className="bg-[#FFFCF5] rounded-lg p-4 text-sm text-[#8A8278] leading-relaxed">
-              {(() => {
-                try {
-                  const data = JSON.parse(postcard.research.find((r) => r.source === "ai_analysis")!.data);
-                  return data.summary || data.analysis || JSON.stringify(data);
-                } catch {
-                  return postcard.research.find((r) => r.source === "ai_analysis")!.data;
-                }
-              })()}
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[10px] uppercase tracking-[1.2px] text-[#B8B0A4] font-medium">AI Analysis</h3>
+            <button
+              onClick={analyze}
+              disabled={analyzing || postcard.images.length === 0}
+              className="bg-gradient-to-br from-[#F7B733] to-[#F0A030] text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-[0_2px_8px_rgba(247,183,51,0.25)] hover:shadow-[0_4px_12px_rgba(247,183,51,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {analyzing ? "Analyzing..." : postcard.research.find((r) => r.source === "ai_analysis") ? "Re-analyze" : "Analyze"}
+            </button>
+          </div>
+          {analyzing && (
+            <div className="flex items-center gap-3 bg-[#FFFCF5] rounded-lg p-4">
+              <div className="w-5 h-5 border-2 border-[#FFF0D4] border-t-[#F7B733] rounded-full animate-spin flex-shrink-0"></div>
+              <span className="text-sm text-[#8A8278]">Analyzing postcard images with Claude...</span>
             </div>
-          ) : (
+          )}
+          {analyzeError && (
+            <div className="bg-[#FFF0EB] rounded-lg p-4 text-sm text-[#E8634A]">{analyzeError}</div>
+          )}
+          {!analyzing && postcard.research.find((r) => r.source === "ai_analysis") && (
+            <AnalysisDisplay data={postcard.research.find((r) => r.source === "ai_analysis")!.data} />
+          )}
+          {!analyzing && !analyzeError && !postcard.research.find((r) => r.source === "ai_analysis") && (
             <div className="bg-[#FFFCF5] rounded-lg p-4 text-sm text-[#B8B0A4] text-center">
-              No AI analysis yet. Run analysis to identify this postcard.
+              No AI analysis yet. Click Analyze to identify this postcard.
             </div>
           )}
         </div>
