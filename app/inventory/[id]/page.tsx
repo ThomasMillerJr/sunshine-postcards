@@ -439,28 +439,9 @@ export default function PostcardDetail() {
 
       {/* Research Cards */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-[#2D2A26]" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>
-            Research
-          </h2>
-          <button
-            onClick={runResearch}
-            disabled={researching}
-            className="bg-gradient-to-br from-[#F7B733] to-[#F0A030] text-white px-5 py-2 rounded-lg text-sm font-semibold shadow-[0_2px_8px_rgba(247,183,51,0.25)] hover:shadow-[0_4px_12px_rgba(247,183,51,0.4)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2"
-          >
-            {researching ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                Researching...
-              </>
-            ) : (
-              <>Run Research</>
-            )}
-          </button>
-        </div>
-        {researchError && (
-          <p className="text-sm text-[#E8634A] bg-[#FFF0EB] rounded-lg px-4 py-2">{researchError}</p>
-        )}
+        <h2 className="text-lg font-bold text-[#2D2A26]" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>
+          Research
+        </h2>
 
         {/* AI Analysis */}
         <div className="bg-white rounded-xl border border-[#FFF0D4] p-5">
@@ -495,7 +476,26 @@ export default function PostcardDetail() {
 
         {/* eBay Comparables */}
         <div className="bg-white rounded-xl border border-[#FFF0D4] p-5">
-          <h3 className="text-[10px] uppercase tracking-[1.2px] text-[#B8B0A4] font-medium mb-3">eBay Sold Comparables</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[10px] uppercase tracking-[1.2px] text-[#B8B0A4] font-medium">eBay Sold Comparables</h3>
+            <button
+              onClick={runResearch}
+              disabled={researching}
+              className="bg-gradient-to-br from-[#F7B733] to-[#F0A030] text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-[0_2px_8px_rgba(247,183,51,0.25)] hover:shadow-[0_4px_12px_rgba(247,183,51,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              {researching ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  Researching...
+                </>
+              ) : (
+                <>{postcard.research.find((r) => r.source === "ebay_sold") ? "Re-research" : "Find Comps"}</>
+              )}
+            </button>
+          </div>
+          {researchError && (
+            <div className="bg-[#FFF0EB] rounded-lg p-3 text-sm text-[#E8634A] mb-3">{researchError}</div>
+          )}
           {postcard.research.find((r) => r.source === "ebay_sold") ? (
             <div>
               {(() => {
