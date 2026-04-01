@@ -34,6 +34,27 @@ export default function PostcardDetail() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [activeImage, setActiveImage] = useState(0);
+  const [researching, setResearching] = useState(false);
+  const [researchError, setResearchError] = useState("");
+
+  const runResearch = async () => {
+    setResearching(true);
+    setResearchError("");
+    try {
+      const res = await fetch(`/api/research/${id}`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Research failed");
+      }
+      // Reload postcard to get new research data
+      const refreshed = await fetch(`/api/postcards/${id}`).then((r) => r.json());
+      setPostcard(refreshed);
+    } catch (err) {
+      setResearchError(err instanceof Error ? err.message : "Research failed");
+    } finally {
+      setResearching(false);
+    }
+  };
 
   useEffect(() => {
     fetch(`/api/postcards/${id}`)
@@ -245,9 +266,28 @@ export default function PostcardDetail() {
 
       {/* Research Cards */}
       <div className="space-y-4">
-        <h2 className="text-lg font-bold text-[#2D2A26]" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>
-          Research
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-[#2D2A26]" style={{ fontFamily: "'DM Serif Display', Georgia, serif" }}>
+            Research
+          </h2>
+          <button
+            onClick={runResearch}
+            disabled={researching}
+            className="bg-gradient-to-br from-[#F7B733] to-[#F0A030] text-white px-5 py-2 rounded-lg text-sm font-semibold shadow-[0_2px_8px_rgba(247,183,51,0.25)] hover:shadow-[0_4px_12px_rgba(247,183,51,0.4)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2"
+          >
+            {researching ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Researching...
+              </>
+            ) : (
+              <>Run Research</>
+            )}
+          </button>
+        </div>
+        {researchError && (
+          <p className="text-sm text-[#E8634A] bg-[#FFF0EB] rounded-lg px-4 py-2">{researchError}</p>
+        )}
 
         {/* AI Analysis */}
         <div className="bg-white rounded-xl border border-[#FFF0D4] p-5">
@@ -279,12 +319,18 @@ export default function PostcardDetail() {
                 try {
                   const data = JSON.parse(postcard.research.find((r) => r.source === "ebay_sold")!.data);
                   const items = Array.isArray(data) ? data : data.items || [];
-                  return items.map((item: { title: string; price: number }, i: number) => (
-                    <div key={i} className="flex justify-between items-center py-2 border-b border-[#FFF8F0] last:border-0">
-                      <span className="text-sm text-[#2D2A26]">{item.title}</span>
-                      <span className="text-sm font-bold text-[#2E7D32]">${item.price?.toFixed(2)}</span>
-                    </div>
-                  ));
+                  return items.slice(0, 15).map((item: Record<string, unknown>, i: number) => {
+                    const title = (item.title || item.name || "Unknown") as string;
+                    const price = (item.price || item.soldPrice || item.totalPrice || 0) as number;
+                    return (
+                      <div key={i} className="flex justify-between items-center py-2 border-b border-[#FFF8F0] last:border-0">
+                        <span className="text-sm text-[#2D2A26] truncate mr-4">{title}</span>
+                        <span className="text-sm font-bold text-[#2E7D32] flex-shrink-0">
+                          {typeof price === "number" && price > 0 ? `$${price.toFixed(2)}` : "—"}
+                        </span>
+                      </div>
+                    );
+                  });
                 } catch {
                   return <p className="text-sm text-[#8A8278]">{postcard.research.find((r) => r.source === "ebay_sold")!.data}</p>;
                 }
@@ -324,6 +370,17 @@ export default function PostcardDetail() {
                 } catch {
                   return <p className="text-sm text-[#8A8278]">Unable to parse pricing data.</p>;
                 }
+              })()}
+              {(() => {
+                try {
+                  const data = JSON.parse(postcard.research.find((r) => r.source === "price_recommendation")!.data);
+                  if (data.reasoning) {
+                    return (
+                      <p className="text-xs text-[#8A8278] mt-3 italic leading-relaxed">{data.reasoning}</p>
+                    );
+                  }
+                } catch { /* ignore */ }
+                return null;
               })()}
             </div>
           ) : (
