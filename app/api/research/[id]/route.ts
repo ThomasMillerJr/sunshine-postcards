@@ -473,118 +473,126 @@ export async function POST(
     return NextResponse.json({ error: "Postcard not found" }, { status: 404 });
   }
 
-  try {
-    // Load AI analysis
-    const aiResearch = db
-      .select()
-      .from(researchResults)
-      .where(eq(researchResults.postcardId, parseInt(id)))
-      .all()
-      .find((r) => r.source === "ai_analysis");
+  // Stream progress updates as newline-delimited JSON
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (data: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(JSON.stringify(data) + "\n"));
+      };
 
-    let aiAnalysis: Record<string, unknown> | null = null;
-    if (aiResearch) {
-      try { aiAnalysis = JSON.parse(aiResearch.data); } catch { /* ignore */ }
-    }
-
-    // Step 0: Google Lens visual search (Tier 0 — image-based exact/visual match)
-    let lensResults: Record<string, unknown>[] = [];
-    const images = db
-      .select()
-      .from(postcardImages)
-      .where(eq(postcardImages.postcardId, parseInt(id)))
-      .all();
-    const frontImage = images.find((img) => img.side === "front") || images[0];
-
-    if (frontImage) {
       try {
-        console.log(`Google Lens: uploading image for postcard #${id}...`);
-        const imageUrl = await uploadImageToApify(frontImage.filePath);
-        console.log(`Google Lens: searching...`);
-        lensResults = await googleLensSearch(imageUrl);
-        console.log(`Google Lens: found ${lensResults.length} eBay results`);
+        // Load AI analysis
+        send({ status: "progress", step: "Loading analysis data..." });
+        const aiResearch = db
+          .select()
+          .from(researchResults)
+          .where(eq(researchResults.postcardId, parseInt(id)))
+          .all()
+          .find((r) => r.source === "ai_analysis");
+
+        let aiAnalysis: Record<string, unknown> | null = null;
+        if (aiResearch) {
+          try { aiAnalysis = JSON.parse(aiResearch.data); } catch { /* ignore */ }
+        }
+
+        // Step 0: Google Lens visual search
+        let lensResults: Record<string, unknown>[] = [];
+        const images = db
+          .select()
+          .from(postcardImages)
+          .where(eq(postcardImages.postcardId, parseInt(id)))
+          .all();
+        const frontImage = images.find((img) => img.side === "front") || images[0];
+
+        if (frontImage) {
+          try {
+            send({ status: "progress", step: "Uploading image for visual search..." });
+            const imageUrl = await uploadImageToApify(frontImage.filePath);
+            send({ status: "progress", step: "Running Google Lens visual match..." });
+            lensResults = await googleLensSearch(imageUrl);
+            send({ status: "progress", step: `Found ${lensResults.length} visual matches` });
+          } catch (err) {
+            console.error("Google Lens search failed:", err);
+            send({ status: "progress", step: "Visual search unavailable, continuing..." });
+          }
+        }
+
+        // Step 1: Keyword searches
+        const queries = buildTieredQueries(postcard, aiAnalysis);
+        send({ status: "progress", step: `Searching eBay sold listings (${queries.length} queries)...` });
+        const keywordComps = await tieredSearch(queries);
+        send({ status: "progress", step: `Found ${keywordComps.length} sold listings` });
+
+        // Merge
+        const seen = new Set<string>();
+        const allComps: Record<string, unknown>[] = [];
+        for (const item of lensResults) {
+          const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
+          if (!seen.has(key)) { seen.add(key); allComps.push(item); }
+        }
+        for (const item of keywordComps) {
+          const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
+          if (!seen.has(key)) { seen.add(key); allComps.push(item); }
+        }
+
+        // Step 2: AI scoring
+        send({ status: "progress", step: "Scoring relevance and pricing..." });
+        const { scored, pricing } = await scoreAndPrice(postcard, aiAnalysis, allComps);
+
+        // Step 3: Store results
+        send({ status: "progress", step: "Saving results..." });
+        const existingResearch = db
+          .select()
+          .from(researchResults)
+          .where(eq(researchResults.postcardId, parseInt(id)))
+          .all();
+
+        for (const r of existingResearch) {
+          if (r.source === "ebay_sold" || r.source === "price_recommendation") {
+            db.delete(researchResults).where(eq(researchResults.id, r.id)).run();
+          }
+        }
+
+        db.insert(researchResults)
+          .values({ postcardId: parseInt(id), source: "ebay_sold", data: JSON.stringify(scored) })
+          .run();
+
+        db.insert(researchResults)
+          .values({ postcardId: parseInt(id), source: "price_recommendation", data: JSON.stringify(pricing) })
+          .run();
+
+        // Step 4: Backfill estimatedValue
+        if (!postcard.estimatedValue && pricing.recommended > 0) {
+          db.update(postcards)
+            .set({ estimatedValue: pricing.recommended, updatedAt: sql`(datetime('now'))` })
+            .where(eq(postcards.id, parseInt(id)))
+            .run();
+        }
+
+        send({
+          status: "complete",
+          success: true,
+          queries,
+          lensMatches: lensResults.length,
+          compsFound: scored.length,
+          relevantComps: scored.filter((s) => s.relevance >= 6).length,
+          pricing,
+        });
       } catch (err) {
-        console.error("Google Lens search failed:", err);
-        // Continue with keyword search — Lens is a bonus, not required
+        console.error("Research failed:", err);
+        send({ status: "error", error: err instanceof Error ? err.message : "Research failed" });
+      } finally {
+        controller.close();
       }
-    }
+    },
+  });
 
-    // Step 1: Build tiered queries and run keyword searches
-    const queries = buildTieredQueries(postcard, aiAnalysis);
-    const keywordComps = await tieredSearch(queries);
-
-    // Merge: Lens results first (they're visual matches), then keyword results, deduped
-    const seen = new Set<string>();
-    const allComps: Record<string, unknown>[] = [];
-
-    for (const item of lensResults) {
-      const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
-      if (!seen.has(key)) {
-        seen.add(key);
-        allComps.push(item);
-      }
-    }
-    for (const item of keywordComps) {
-      const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
-      if (!seen.has(key)) {
-        seen.add(key);
-        allComps.push(item);
-      }
-    }
-
-    // Step 2: AI scoring and pricing
-    const { scored, pricing } = await scoreAndPrice(postcard, aiAnalysis, allComps);
-
-    // Step 3: Store results (delete old first)
-    const existingResearch = db
-      .select()
-      .from(researchResults)
-      .where(eq(researchResults.postcardId, parseInt(id)))
-      .all();
-
-    for (const r of existingResearch) {
-      if (r.source === "ebay_sold" || r.source === "price_recommendation") {
-        db.delete(researchResults).where(eq(researchResults.id, r.id)).run();
-      }
-    }
-
-    db.insert(researchResults)
-      .values({
-        postcardId: parseInt(id),
-        source: "ebay_sold",
-        data: JSON.stringify(scored),
-      })
-      .run();
-
-    db.insert(researchResults)
-      .values({
-        postcardId: parseInt(id),
-        source: "price_recommendation",
-        data: JSON.stringify(pricing),
-      })
-      .run();
-
-    // Step 4: Backfill estimatedValue if not set
-    if (!postcard.estimatedValue && pricing.recommended > 0) {
-      db.update(postcards)
-        .set({ estimatedValue: pricing.recommended, updatedAt: sql`(datetime('now'))` })
-        .where(eq(postcards.id, parseInt(id)))
-        .run();
-    }
-
-    return NextResponse.json({
-      success: true,
-      queries,
-      lensMatches: lensResults.length,
-      compsFound: scored.length,
-      relevantComps: scored.filter((s) => s.relevance >= 6).length,
-      pricing,
-    });
-  } catch (err) {
-    console.error("Research failed:", err);
-    return NextResponse.json(
-      { error: "Research failed", details: String(err) },
-      { status: 500 }
-    );
-  }
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Transfer-Encoding": "chunked",
+      "Cache-Control": "no-cache",
+    },
+  });
 }

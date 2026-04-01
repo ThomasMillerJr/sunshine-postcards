@@ -204,6 +204,7 @@ export default function PostcardDetail() {
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [activeImage, setActiveImage] = useState(0);
   const [researching, setResearching] = useState(false);
+  const [researchStep, setResearchStep] = useState("");
   const [researchError, setResearchError] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -211,12 +212,42 @@ export default function PostcardDetail() {
   const runResearch = async () => {
     setResearching(true);
     setResearchError("");
+    setResearchStep("Starting research...");
     try {
       const res = await fetch(`/api/research/${id}`, { method: "POST" });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Research failed");
+      if (!res.ok && !res.body) {
+        throw new Error("Research failed");
       }
+
+      // Read streaming response
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete lines
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
+            if (msg.status === "progress") {
+              setResearchStep(msg.step);
+            } else if (msg.status === "error") {
+              throw new Error(msg.error);
+            }
+          } catch (e) {
+            if (e instanceof SyntaxError) continue;
+            throw e;
+          }
+        }
+      }
+
       // Reload postcard to get new research data
       const refreshed = await fetch(`/api/postcards/${id}`).then((r) => r.json());
       setPostcard(refreshed);
@@ -224,6 +255,7 @@ export default function PostcardDetail() {
       setResearchError(err instanceof Error ? err.message : "Research failed");
     } finally {
       setResearching(false);
+      setResearchStep("");
     }
   };
 
@@ -544,6 +576,12 @@ export default function PostcardDetail() {
           </div>
           {researchError && (
             <div className="bg-[#FFF0EB] rounded-lg p-3 text-sm text-[#E8634A] mb-3">{researchError}</div>
+          )}
+          {researching && researchStep && (
+            <div className="flex items-center gap-3 bg-[#FFFCF5] rounded-lg p-3 mb-3">
+              <div className="w-4 h-4 border-2 border-[#FFF0D4] border-t-[#F7B733] rounded-full animate-spin flex-shrink-0"></div>
+              <span className="text-sm text-[#8A8278]">{researchStep}</span>
+            </div>
           )}
           {postcard.research.find((r) => r.source === "ebay_sold") ? (
             <div>
