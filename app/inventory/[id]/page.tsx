@@ -15,6 +15,7 @@ interface PostcardData {
   publisher: string | null;
   estimatedValue: number | null;
   notes: string | null;
+  status: string;
   images: { id: number; side: string; filePath: string; cropBox: string | null }[];
   transactions: {
     id: number;
@@ -22,7 +23,11 @@ interface PostcardData {
     platform: string;
     listingPrice: number | null;
     soldPrice: number | null;
+    fees: number | null;
     profit: number | null;
+    listingUrl: string | null;
+    listedAt: string | null;
+    soldAt: string | null;
   }[];
   research: { id: number; source: string; data: string; createdAt: string }[];
 }
@@ -196,6 +201,203 @@ function AnalysisDisplay({ data }: { data: string }) {
   }
 }
 
+const STATUS_BADGES: Record<string, { label: string; className: string }> = {
+  inventory: { label: "In Inventory", className: "bg-[#F5F0E8] text-[#8A8278]" },
+  listed: { label: "Listed", className: "bg-[#FFF4D6] text-[#D4960A]" },
+  sold: { label: "Sold", className: "bg-[#E8F5E9] text-[#2E7D32]" },
+  delisted: { label: "Delisted", className: "bg-[#FFF0EB] text-[#E8634A]" },
+};
+
+function StatusCard({
+  postcard,
+  onStatusChange,
+}: {
+  postcard: PostcardData;
+  onStatusChange: () => void;
+}) {
+  const [formMode, setFormMode] = useState<"listed" | "sold" | "edit-sold" | null>(null);
+  const [listingPrice, setListingPrice] = useState("");
+  const [listingUrl, setListingUrl] = useState("");
+  const [soldPrice, setSoldPrice] = useState("");
+  const [fees, setFees] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const status = postcard.status || "inventory";
+  const badge = STATUS_BADGES[status] || STATUS_BADGES.inventory;
+  const latestTxn = postcard.transactions?.[postcard.transactions.length - 1];
+
+  const submitTransition = async (newStatus: string, data: Record<string, unknown> = {}) => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/postcards/${postcard.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus, ...data }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Something went wrong" }));
+        setError(err.error || "Something went wrong");
+        return;
+      }
+      setFormMode(null);
+      onStatusChange();
+    } catch {
+      setError("Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleListSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitTransition("listed", {
+      listingPrice: parseFloat(listingPrice) || 0,
+      listingUrl: listingUrl || undefined,
+    });
+  };
+
+  const handleSoldSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitTransition("sold", {
+      soldPrice: parseFloat(soldPrice) || 0,
+      fees: parseFloat(fees) || 0,
+    });
+  };
+
+  const handleDelist = () => {
+    if (confirm("Delist this postcard?")) {
+      submitTransition("delisted");
+    }
+  };
+
+  const handleRelist = () => {
+    setListingPrice(latestTxn?.listingPrice?.toString() || "");
+    setListingUrl(latestTxn?.listingUrl || "");
+    setFormMode("listed");
+  };
+
+  const inputClass = "w-full px-3 py-2 border-2 border-[#FFF0D4] rounded-xl text-sm text-[#2D2A26] placeholder-[#B8B0A4] focus:border-[#F7B733] focus:ring-2 focus:ring-[#F7B73340] focus:outline-none transition-all";
+  const btnPrimary = "bg-gradient-to-br from-[#F7B733] to-[#F0A030] text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-[0_2px_8px_rgba(247,183,51,0.25)] hover:shadow-[0_4px_12px_rgba(247,183,51,0.4)] transition-all disabled:opacity-50";
+  const btnSecondary = "px-4 py-2 text-sm font-medium text-[#8A8278] hover:text-[#2D2A26] transition-colors";
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#FFF0D4] shadow-[0_2px_8px_rgba(247,183,51,0.06)] p-5 mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-[#2D2A26]">Listing Status</h3>
+        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${badge.className}`}>
+          {badge.label}
+        </span>
+      </div>
+
+      {error && (
+        <div className="bg-[#FFF0EB] rounded-lg p-3 text-sm text-[#E8634A] mb-3">{error}</div>
+      )}
+
+      {/* Inventory state */}
+      {status === "inventory" && !formMode && (
+        <button onClick={() => setFormMode("listed")} className={btnPrimary}>
+          Mark as Listed
+        </button>
+      )}
+
+      {/* Listed state */}
+      {status === "listed" && !formMode && (
+        <div>
+          <div className="text-sm text-[#2D2A26] mb-3">
+            <span className="text-[#8A8278]">Listed at </span>
+            <span className="font-semibold">${latestTxn?.listingPrice?.toFixed(2) || "\u2014"}</span>
+            {latestTxn?.listingUrl && (
+              <> &middot; <a href={latestTxn.listingUrl} target="_blank" rel="noopener noreferrer" className="text-[#E8634A] hover:underline">View listing</a></>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setFormMode("sold")} className={btnPrimary}>Mark as Sold</button>
+            <button onClick={handleDelist} className={btnSecondary}>Delist</button>
+          </div>
+        </div>
+      )}
+
+      {/* Sold state */}
+      {status === "sold" && formMode !== "edit-sold" && (
+        <div>
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <p className="text-[#8A8278] text-xs">Sold Price</p>
+              <p className="font-semibold text-[#2D2A26]">${latestTxn?.soldPrice?.toFixed(2) || "\u2014"}</p>
+            </div>
+            <div>
+              <p className="text-[#8A8278] text-xs">Fees</p>
+              <p className="font-semibold text-[#2D2A26]">${latestTxn?.fees?.toFixed(2) || "0.00"}</p>
+            </div>
+            <div>
+              <p className="text-[#8A8278] text-xs">Profit</p>
+              <p className="font-semibold text-[#2E7D32]">${latestTxn?.profit?.toFixed(2) || "\u2014"}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setSoldPrice(latestTxn?.soldPrice?.toString() || "");
+              setFees(latestTxn?.fees?.toString() || "");
+              setFormMode("edit-sold");
+            }}
+            className="text-xs text-[#8A8278] hover:text-[#E8634A] mt-2"
+          >
+            Edit
+          </button>
+        </div>
+      )}
+
+      {/* Delisted state */}
+      {status === "delisted" && !formMode && (
+        <div>
+          <p className="text-sm text-[#8A8278] mb-3">
+            Was listed at ${latestTxn?.listingPrice?.toFixed(2) || "\u2014"}
+          </p>
+          <button onClick={handleRelist} className={btnPrimary}>Relist</button>
+        </div>
+      )}
+
+      {/* Listed form (for inventory->listed and delisted->listed) */}
+      {formMode === "listed" && (
+        <form onSubmit={handleListSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-[#2D2A26] mb-1">Listing Price *</label>
+            <input type="number" step="0.01" required value={listingPrice} onChange={(e) => setListingPrice(e.target.value)} placeholder="0.00" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#2D2A26] mb-1">Listing URL</label>
+            <input type="url" value={listingUrl} onChange={(e) => setListingUrl(e.target.value)} placeholder="https://ebay.com/..." className={inputClass} />
+          </div>
+          <div className="flex gap-2">
+            <button type="submit" disabled={loading} className={btnPrimary}>{loading ? "Saving..." : "Save"}</button>
+            <button type="button" onClick={() => setFormMode(null)} className={btnSecondary}>Cancel</button>
+          </div>
+        </form>
+      )}
+
+      {/* Sold form (for listed->sold and edit-sold) */}
+      {(formMode === "sold" || formMode === "edit-sold") && (
+        <form onSubmit={handleSoldSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-[#2D2A26] mb-1">Sold Price *</label>
+            <input type="number" step="0.01" required value={soldPrice} onChange={(e) => setSoldPrice(e.target.value)} placeholder="0.00" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#2D2A26] mb-1">Fees</label>
+            <input type="number" step="0.01" value={fees} onChange={(e) => setFees(e.target.value)} placeholder="0.00" className={inputClass} />
+          </div>
+          <div className="flex gap-2">
+            <button type="submit" disabled={loading} className={btnPrimary}>{loading ? "Saving..." : formMode === "edit-sold" ? "Update" : "Mark as Sold"}</button>
+            <button type="button" onClick={() => setFormMode(null)} className={btnSecondary}>Cancel</button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 export default function PostcardDetail() {
   const { id } = useParams();
   const router = useRouter();
@@ -290,14 +492,16 @@ export default function PostcardDetail() {
     }
   };
 
-  useEffect(() => {
+  const fetchPostcard = () => {
     fetch(`/api/postcards/${id}`)
       .then((r) => r.json())
       .then((data) => {
         setPostcard(data);
         setForm(data);
       });
-  }, [id]);
+  };
+
+  useEffect(() => { fetchPostcard(); }, [id]);
 
   const save = async () => {
     const res = await fetch(`/api/postcards/${id}`, {
@@ -487,6 +691,8 @@ export default function PostcardDetail() {
           )}
         </div>
       </div>
+
+      <StatusCard postcard={postcard} onStatusChange={fetchPostcard} />
 
       {/* Edit form */}
       {editing && (
