@@ -13,9 +13,9 @@ The `/public/logo.png` is 4.9MB. On first visit with an empty cache, the `<img>`
 
 ### Solution
 
-1. **Compress `logo.png`** — resize to ~400px wide, compress to <100KB using macOS `sips` or `sharp`. Replace the existing file in `/public/logo.png`.
-2. **Switch to `next/image`** in both `app/login/page.tsx` and `app/layout.tsx` with `priority` prop to preload above-the-fold images.
-3. **Add explicit `width`/`height` props** to prevent layout shift during load.
+1. **Compress `logo.png`** — resize to ~400px wide, compress to <100KB using macOS `sips`. Replace the existing file in `/public/logo.png`. Note: `sharp` is already installed and configured in `next.config.ts` (`serverExternalPackages`), so Next.js will further optimize via its image pipeline. Source compression just needs to be reasonable, not aggressive.
+2. **Switch to `next/image`** in both `app/login/page.tsx` and `app/layout.tsx` with `priority` prop to preload above-the-fold images. Both are client components — `next/image` works in client components.
+3. **Add explicit `width`/`height` props** reflecting display size (e.g., navbar: width ~150, login: width ~200). Next.js handles srcset generation from the source file.
 
 ### Files Changed
 
@@ -38,9 +38,11 @@ A floating feedback button present on every authenticated page. Clicking opens a
 #### 1. FeedbackBubble Component (`app/components/FeedbackBubble.tsx`)
 
 - Client component (`"use client"`)
+- **Note:** `app/components/` is a new directory — first shared component in the project
 - Fixed position: `bottom-6 right-6`, `z-40` (below navbar's z-50)
 - Circular button with inline SVG chat icon
 - Styled with gold gradient matching the app's "Add Postcard" button
+- **Hidden on `/login`** — uses `usePathname()` from `next/navigation` to hide when `pathname === '/login'` (the root layout renders on all pages including login, so the bubble must self-hide)
 - On click: toggles modal overlay
 
 #### 2. Feedback Modal (within FeedbackBubble)
@@ -58,22 +60,26 @@ A floating feedback button present on every authenticated page. Clicking opens a
 - `POST /api/feedback`
 - Protected by existing auth middleware (requires valid session)
 - Request body: `{ title: string, description?: string }`
-- Validates title is non-empty
+- **Guard clause:** If `!process.env.GITHUB_TOKEN`, return 500 with `"Feedback not configured"`
+- Validates title is non-empty, max 200 chars; description max 5000 chars
 - Calls GitHub REST API: `POST https://api.github.com/repos/ThomasMillerJr/sunshine-postcards/issues`
   - Headers: `Authorization: Bearer $GITHUB_TOKEN`, `Accept: application/vnd.github+json`
   - Body: `{ title, body: description, labels: ["feedback"] }`
+  - **Label fallback:** If the `feedback` label doesn't exist on the repo, GitHub returns 422. Catch this and retry without labels rather than failing.
 - Returns `{ success: true, issueUrl: string }` on success
 - Returns appropriate error status on failure
 
 #### 4. Layout Integration (`app/layout.tsx`)
 
 - Import and render `<FeedbackBubble />` inside `<body>`, after `<main>`
-- Component renders on all pages; auth middleware already protects routes, so the bubble only appears for authenticated users
+- Component self-hides on `/login` via `usePathname()` (see component spec above)
+- `/api/feedback` is NOT in middleware's `PUBLIC_PATHS` — auth is enforced automatically, do not add it
 
-#### 5. Environment (`ecosystem.config.cjs`)
+#### 5. Environment (`.env.local`)
 
 - New env var: `GITHUB_TOKEN` — Personal Access Token with `repo` scope (or fine-grained with Issues write)
-- Placeholder added to PM2 config
+- Added to `.env.local` (where all other secrets live: `APP_PIN`, `JWT_SECRET`, `ANTHROPIC_API_KEY`), NOT to `ecosystem.config.cjs`
+- Next.js auto-loads `.env.local` in both dev and production
 
 ### Not in Scope
 
