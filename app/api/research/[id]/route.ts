@@ -225,7 +225,7 @@ async function fetchEbayActiveListings(query: string, count: number = 10): Promi
   }));
 }
 
-// --- Google Lens Visual Search ---
+// --- Google Lens Visual Search (kept for future use, not called in main flow) ---
 
 async function uploadImageToApify(filePath: string): Promise<string> {
   const buffer = await readFile(path.join(UPLOADS_DIR, filePath));
@@ -414,7 +414,7 @@ async function scoreAndPrice(
     const totalPrice = parseFloat(String(c.totalPrice || 0)) || 0;
     const isLens = c.lensMatch === true;
     const priceStr = soldPrice > 0 ? `$${soldPrice.toFixed(2)}` : totalPrice > 0 ? `$${totalPrice.toFixed(2)} (incl. shipping)` : (isLens ? "ACTIVE LISTING (no sold price)" : "$0.00");
-    const tag = isLens ? " [VISUAL MATCH]" : " [KEYWORD SEARCH]";
+    const tag = isLens ? " [ACTIVE LISTING]" : " [SOLD]";
     return `${i + 1}. "${title}" — ${priceStr}${tag}`;
   }).join("\n");
 
@@ -426,7 +426,7 @@ async function scoreAndPrice(
         role: "user",
         content: `You are a vintage postcard pricing expert. Score each comparable for relevance to MY postcard, then recommend pricing.
 
-IMPORTANT: Comparables tagged [VISUAL MATCH] come from Google Lens image search — they are ACTIVE LISTINGS, not sold items. Use them for RELEVANCE SCORING (they confirm the card exists on eBay and show market supply) but NOT for pricing. Comparables tagged [KEYWORD SEARCH] are SOLD listings with actual sale prices — use these for pricing.
+IMPORTANT: Comparables tagged [ACTIVE LISTING] are currently listed on eBay — they have asking prices, not sold prices. Use them for RELEVANCE SCORING and supply assessment but NOT for pricing. Comparables tagged [SOLD] are completed sales with actual sold prices — use these for pricing.
 
 MY POSTCARD:
 ${analysisContext || `Title: ${postcard.title}\nEra: ${postcard.era}\nCondition: ${postcard.condition}\nLocation: ${postcard.locationDepicted || "unknown"}\nPublisher: ${postcard.publisher || "unknown"}\nCategory: ${postcard.category}`}
@@ -455,7 +455,7 @@ Verdict guide:
 - "collector": recommended $15+. Scarce subject, notable publisher, RPPC, identified photographer, pre-1907, or cross-collectible appeal. Few or no visual matches = low supply.
 - "unknown": not enough data to judge. Use this sparingly.
 
-Price based ONLY on [KEYWORD SEARCH] comps with relevance 6+ (these have actual sold prices). Use [VISUAL MATCH] comps for relevance scoring and supply assessment only. If no keyword comps score 6+, estimate based on card characteristics and note low confidence.`,
+Price based ONLY on [SOLD] comps with relevance 6+ (these have actual sold prices). Use [ACTIVE LISTING] comps for relevance scoring and supply assessment only. If no sold comps score 6+, estimate based on card characteristics and note low confidence.`,
       },
     ],
   });
