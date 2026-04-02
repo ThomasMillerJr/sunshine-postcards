@@ -30,14 +30,11 @@ Values:
 - `listed` → `delisted`
 - `delisted` → `listed` (relist)
 
+All other transitions are **invalid** and must be rejected by the API with 422: `"Invalid status transition from '{from}' to '{to}'"`. For example, `inventory` → `sold` (must list first) and `sold` → `listed` (sold is terminal) are not allowed.
+
 ### Migration
 
-New migration file `lib/migrations/0001_postcard_status.sql`:
-```sql
-ALTER TABLE postcards ADD COLUMN status TEXT NOT NULL DEFAULT 'inventory';
-```
-
-All existing postcards default to `inventory`.
+Update `lib/schema.ts` to add the `status` column, then apply with `npx drizzle-kit push` (the existing pattern — no migration files are run manually, Drizzle diffs the schema against the DB). All existing postcards default to `inventory`.
 
 ### Schema Update
 
@@ -48,7 +45,6 @@ Add `status` field to the `postcards` table definition in `lib/schema.ts`.
 | File | Change |
 |------|--------|
 | `lib/schema.ts` | Add `status` column to `postcards` table |
-| `lib/migrations/0001_postcard_status.sql` | New migration file |
 
 ---
 
@@ -85,11 +81,22 @@ New **status management card** on the postcard detail page (`app/inventory/[id]/
 
 ### Transaction Model
 
-One postcard = one active transaction at a time (the latest). Each status transition creates or updates a row in the existing `transactions` table. The transaction stores the financial data; `postcards.status` is the display state.
+One postcard = one active transaction at a time. Each status transition creates or updates a row in the existing `transactions` table:
+
+- `inventory` → `listed`: **Creates** a new transaction row with `status: 'listed'`, `listingPrice`, `listingUrl`, `listedAt`
+- `listed` → `sold`: **Updates** the existing transaction to `status: 'sold'`, adds `soldPrice`, `fees`, `soldAt`, calculates `profit`
+- `listed` → `delisted`: **Updates** the existing transaction to `status: 'delisted'`
+- `delisted` → `listed` (relist): **Updates** the same transaction row back to `status: 'listed'` with new listing data
+
+**Source of truth**: `postcards.status` is canonical for display/filtering. `transactions.status` tracks the financial state. Both must be written atomically in the same API handler. The status card reads from `postcards.status`; the pricing prompt reads from `transactions` joined with `postcards`.
+
+Profit calculation follows the existing pattern: `profit = soldPrice - fees` (simplified, matches existing `POST /api/transactions` logic).
 
 ### API Changes
 
-`PUT /api/postcards/[id]` already supports updating postcard fields. Extend it to accept `status` along with optional transaction data (`listingPrice`, `listingUrl`, `listedAt`, `soldPrice`, `fees`, `soldAt`). When status changes, the route creates/updates the corresponding transaction.
+`PUT /api/postcards/[id]` already supports updating postcard fields via an `ALLOWED_FIELDS` whitelist. Status changes need **separate handling** — do NOT just add `'status'` to the whitelist. Instead, add a dedicated code path: if the request body includes `status`, validate the transition, then create/update the transaction as a side effect. The transaction data (`listingPrice`, `listingUrl`, `listedAt`, `soldPrice`, `fees`, `soldAt`) comes from the same request body.
+
+The `Postcard` TypeScript interface on the inventory and detail pages must be extended to include `status`, and the `GET /api/postcards` response must include it.
 
 ### Files Changed
 
@@ -113,16 +120,15 @@ Horizontal pill/tab bar above the postcard grid:
 - **Sold** — `status = 'sold'`
 - **Delisted** — `status = 'delisted'`
 
-### API Changes
+### Filtering Approach
 
-`GET /api/postcards` needs to accept an optional `status` query parameter to filter results.
+Client-side filtering. The inventory page already fetches all postcards at once (`?limit=500`) and does client-side category filtering. Adding status filtering follows the same pattern — filter the already-loaded data by `status` field. No API changes needed for this section.
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `app/inventory/page.tsx` | Add status filter tabs |
-| `app/api/postcards/route.ts` | Accept `status` query param for filtering |
+| `app/inventory/page.tsx` | Add status filter tabs, extend `Postcard` interface with `status` |
 
 ---
 
@@ -130,19 +136,18 @@ Horizontal pill/tab bar above the postcard grid:
 
 ### Data Query
 
-Before calling `scoreAndPrice()` in the research pipeline, query the user's sales history:
+Before calling `scoreAndPrice()` in the research pipeline, query the user's sales history using **Drizzle ORM** (not raw SQL — follow the existing codebase pattern). Pseudocode:
 
-```sql
-SELECT p.title, p.category, p.era, p.condition, p.locationDepicted,
-       t.soldPrice, t.listingPrice, t.fees, t.status, t.soldAt, t.listedAt
-FROM transactions t
-JOIN postcards p ON p.id = t.postcardId
-WHERE t.status IN ('sold', 'listed', 'delisted')
-ORDER BY t.soldAt DESC NULLS LAST, t.listedAt DESC
+```
+transactions JOIN postcards ON postcardId
+WHERE transactions.status IN ('sold', 'listed', 'delisted')
+ORDER BY soldAt DESC NULLS LAST, listedAt DESC
 LIMIT 50
 ```
 
-Returns the user's last 50 transactions with postcard metadata for context.
+Returns the user's last 50 transactions with postcard metadata (title, category, era, condition, location) for context. Since we use one transaction per postcard (relisting updates the same row), there are no duplicates to worry about.
+
+**Extract this into a helper function** (e.g., `buildSalesHistoryContext()` in `lib/sales-history.ts`) to avoid bloating the already-large research route (750+ lines).
 
 ### Prompt Injection
 
@@ -171,7 +176,8 @@ The section is omitted entirely. The pipeline works exactly as it does today. As
 
 | File | Change |
 |------|--------|
-| `app/api/research/[id]/route.ts` | Query sales history, format as prompt section, inject into Claude call |
+| `lib/sales-history.ts` | New file: `buildSalesHistoryContext()` — query + format sales data for prompt |
+| `app/api/research/[id]/route.ts` | Import helper, inject sales history section into Claude pricing call |
 
 ---
 
