@@ -17,6 +17,7 @@ interface Postcard {
   thumbnailCropBox: string | null;
   verdict: string | null;
   verdictLabel: string | null;
+  status: string;
 }
 
 function CroppedImg({ src, alt, cropBox }: { src: string; alt: string; cropBox?: string | null }) {
@@ -52,6 +53,7 @@ export default function InventoryPage() {
   const [category, setCategory] = useState("All");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  const [statusFilter, setStatusFilter] = useState("All");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -70,6 +72,7 @@ export default function InventoryPage() {
   // Filter
   const filtered = postcards
     .filter((p) => {
+      if (statusFilter !== "All" && (p.status || "inventory") !== statusFilter.toLowerCase()) return false;
       if (category !== "All" && p.category !== category) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -109,6 +112,26 @@ export default function InventoryPage() {
             className="w-full bg-white border border-[#FFF0D4] rounded-xl py-3 pl-10 pr-4 text-sm text-[#2D2A26] placeholder-[#B8B0A4] focus:border-[#F7B733] focus:ring-2 focus:ring-[#F7B73340] focus:outline-none transition-all"
           />
         </div>
+      </div>
+
+      {/* Status filter */}
+      <div className="flex items-center gap-2 mb-3">
+        {["All", "Inventory", "Listed", "Sold", "Delisted"].map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all ${
+              statusFilter === s
+                ? s === "Sold" ? "bg-[#E8F5E9] border-[#2E7D32] text-[#2E7D32] font-semibold"
+                  : s === "Listed" ? "bg-[#FFF4D6] border-[#D4960A] text-[#D4960A] font-semibold"
+                  : s === "Delisted" ? "bg-[#FFF0EB] border-[#E8634A] text-[#E8634A] font-semibold"
+                  : "bg-[#FFF4D6] border-[#F7B733] text-[#8A6A10] font-semibold"
+                : "bg-white border-[#FFF0D4] text-[#8A8278] hover:border-[#F7B733] hover:text-[#8A6A10]"
+            }`}
+          >
+            {s}
+          </button>
+        ))}
       </div>
 
       {/* Filters + controls */}
