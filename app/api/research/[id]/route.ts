@@ -111,53 +111,68 @@ function buildTieredQueries(
   return [...new Set(queries.map((q) => q.replace(/\s+/g, " ").trim()))];
 }
 
-// --- eBay Finding API (Sold Items) ---
+// --- Apify eBay Sold Listings (until Marketplace Insights API is approved) ---
+
+const APIFY_EBAY_ACTOR = "caffein.dev/ebay-sold-listings";
 
 async function fetchEbaySoldComps(query: string, count: number = 15): Promise<Record<string, unknown>[]> {
-  const params = new URLSearchParams({
-    "OPERATION-NAME": "findCompletedItems",
-    "SERVICE-VERSION": "1.13.0",
-    "SECURITY-APPNAME": EBAY_APP_ID || "",
-    "RESPONSE-DATA-FORMAT": "JSON",
-    "REST-PAYLOAD": "",
-    "keywords": query,
-    "categoryId": "914", // Postcards
-    "paginationInput.entriesPerPage": String(count),
-    "sortOrder": "EndTimeSoonest",
-    // Only sold items
-    "itemFilter(0).name": "SoldItemsOnly",
-    "itemFilter(0).value": "true",
-  });
+  if (!APIFY_TOKEN) throw new Error("APIFY_TOKEN not configured");
 
-  const res = await fetch(
-    `https://svcs.ebay.com/services/search/FindingService/v1?${params.toString()}`
+  const runRes = await fetch(
+    `https://api.apify.com/v2/acts/${encodeURIComponent(APIFY_EBAY_ACTOR)}/runs?token=${APIFY_TOKEN}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        keyword: query,
+        count,
+        daysToScrape: 90,
+        sortOrder: "endedRecently",
+        ebaySite: "ebay.com",
+        itemCondition: "any",
+        currencyMode: "USD",
+      }),
+    }
   );
 
-  if (!res.ok) throw new Error(`eBay Finding API failed: ${res.status}`);
+  if (!runRes.ok) throw new Error(`Apify run failed: ${runRes.status}`);
 
-  const data = await res.json();
-  const response = data.findCompletedItemsResponse?.[0];
+  const run = await runRes.json();
+  const runId = run.data?.id;
+  if (!runId) throw new Error("No run ID returned from Apify");
 
-  if (response?.ack?.[0] !== "Success") {
-    const errMsg = response?.errorMessage?.[0]?.error?.[0]?.message?.[0] || "Unknown error";
-    throw new Error(`eBay Finding API: ${errMsg}`);
+  const maxWait = 120_000;
+  const start = Date.now();
+  let status = run.data?.status;
+
+  while (status !== "SUCCEEDED" && status !== "FAILED" && status !== "ABORTED") {
+    if (Date.now() - start > maxWait) throw new Error("Apify run timed out");
+    await new Promise((r) => setTimeout(r, 3000));
+    const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`);
+    const statusData = await statusRes.json();
+    status = statusData.data?.status;
   }
 
-  const items = response?.searchResult?.[0]?.item || [];
+  if (status !== "SUCCEEDED") throw new Error(`Apify run ${status}`);
 
-  return items.map((item: Record<string, unknown[]>) => ({
-    title: item.title?.[0] || "",
-    url: item.viewItemURL?.[0] || "",
-    soldPrice: parseFloat(
-      ((item.sellingStatus?.[0] as Record<string, Record<string, string>[]>)?.currentPrice?.[0]?.__value__) || "0"
-    ),
-    shippingPrice: parseFloat(
-      ((item.shippingInfo?.[0] as Record<string, Record<string, string>[]>)?.shippingServiceCost?.[0]?.__value__) || "0"
-    ),
-    endedAt: (item.listingInfo?.[0] as Record<string, unknown[]>)?.endTime?.[0] || null,
-    imageUrl: item.galleryURL?.[0] || null,
-    condition: (item.condition?.[0] as Record<string, unknown[]>)?.conditionDisplayName?.[0] || null,
-    itemId: item.itemId?.[0] || null,
+  const datasetId = run.data?.defaultDatasetId;
+  const dataRes = await fetch(
+    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=${count}`
+  );
+
+  if (!dataRes.ok) throw new Error(`Failed to fetch Apify dataset: ${dataRes.status}`);
+
+  const items: Record<string, unknown>[] = await dataRes.json();
+
+  return items.map((item) => ({
+    title: (item.title || item.name || "") as string,
+    url: (item.url || item.itemUrl || "") as string,
+    soldPrice: parseFloat(String(item.soldPrice || item.price || 0)) || 0,
+    totalPrice: parseFloat(String(item.totalPrice || 0)) || 0,
+    shippingPrice: parseFloat(String(item.shippingPrice || 0)) || 0,
+    endedAt: (item.endedAt || null) as string | null,
+    imageUrl: null, // Apify actor doesn't return images
+    condition: null,
   }));
 }
 
@@ -392,7 +407,7 @@ async function tieredSearch(
     }
   }
 
-  // Tier 1-3: Sold items via Finding API
+  // Tier 1-3: Sold items via Apify
   for (let i = 0; i < queries.length; i++) {
     const query = queries[i];
     try {
@@ -407,7 +422,7 @@ async function tieredSearch(
       }
       if (soldResults.length >= 10) break;
     } catch (err) {
-      console.error(`eBay Finding API failed for "${query}":`, err);
+      console.error(`Apify sold search failed for "${query}":`, err);
     }
   }
 
