@@ -7,7 +7,8 @@ import path from "path";
 import Anthropic from "@anthropic-ai/sdk";
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
-const APIFY_ACTOR = "caffein.dev/ebay-sold-listings";
+const EBAY_APP_ID = process.env.EBAY_CLIENT_ID;
+const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET;
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
 // --- Types ---
@@ -109,53 +110,119 @@ function buildTieredQueries(
   return [...new Set(queries.map((q) => q.replace(/\s+/g, " ").trim()))];
 }
 
-// --- Apify eBay Search ---
+// --- eBay Finding API (Sold Items) ---
 
-async function fetchEbayComps(query: string, count: number = 15): Promise<Record<string, unknown>[]> {
-  const runRes = await fetch(
-    `https://api.apify.com/v2/acts/${encodeURIComponent(APIFY_ACTOR)}/runs?token=${APIFY_TOKEN}`,
+async function fetchEbaySoldComps(query: string, count: number = 15): Promise<Record<string, unknown>[]> {
+  const params = new URLSearchParams({
+    "OPERATION-NAME": "findCompletedItems",
+    "SERVICE-VERSION": "1.13.0",
+    "SECURITY-APPNAME": EBAY_APP_ID || "",
+    "RESPONSE-DATA-FORMAT": "JSON",
+    "REST-PAYLOAD": "",
+    "keywords": query,
+    "categoryId": "914", // Postcards
+    "paginationInput.entriesPerPage": String(count),
+    "sortOrder": "EndTimeSoonest",
+    // Only sold items
+    "itemFilter(0).name": "SoldItemsOnly",
+    "itemFilter(0).value": "true",
+  });
+
+  const res = await fetch(
+    `https://svcs.ebay.com/services/search/FindingService/v1?${params.toString()}`
+  );
+
+  if (!res.ok) throw new Error(`eBay Finding API failed: ${res.status}`);
+
+  const data = await res.json();
+  const response = data.findCompletedItemsResponse?.[0];
+
+  if (response?.ack?.[0] !== "Success") {
+    const errMsg = response?.errorMessage?.[0]?.error?.[0]?.message?.[0] || "Unknown error";
+    throw new Error(`eBay Finding API: ${errMsg}`);
+  }
+
+  const items = response?.searchResult?.[0]?.item || [];
+
+  return items.map((item: Record<string, unknown[]>) => ({
+    title: item.title?.[0] || "",
+    url: item.viewItemURL?.[0] || "",
+    soldPrice: parseFloat(
+      ((item.sellingStatus?.[0] as Record<string, Record<string, string>[]>)?.currentPrice?.[0]?.__value__) || "0"
+    ),
+    shippingPrice: parseFloat(
+      ((item.shippingInfo?.[0] as Record<string, Record<string, string>[]>)?.shippingServiceCost?.[0]?.__value__) || "0"
+    ),
+    endedAt: (item.listingInfo?.[0] as Record<string, unknown[]>)?.endTime?.[0] || null,
+    imageUrl: item.galleryURL?.[0] || null,
+    condition: (item.condition?.[0] as Record<string, unknown[]>)?.conditionDisplayName?.[0] || null,
+    itemId: item.itemId?.[0] || null,
+  }));
+}
+
+// --- eBay Browse API (Active Listings — for supply/image data) ---
+
+let _ebayToken: { token: string; expiresAt: number } | null = null;
+
+async function getEbayOAuthToken(): Promise<string> {
+  if (_ebayToken && Date.now() < _ebayToken.expiresAt) {
+    return _ebayToken.token;
+  }
+
+  const credentials = Buffer.from(`${EBAY_APP_ID}:${EBAY_CLIENT_SECRET}`).toString("base64");
+  const res = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Authorization": `Basic ${credentials}`,
+    },
+    body: "grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope",
+  });
+
+  if (!res.ok) throw new Error(`eBay OAuth failed: ${res.status}`);
+
+  const data = await res.json();
+  _ebayToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in - 60) * 1000, // refresh 1 min early
+  };
+  return _ebayToken.token;
+}
+
+async function fetchEbayActiveListings(query: string, count: number = 10): Promise<Record<string, unknown>[]> {
+  const token = await getEbayOAuthToken();
+
+  const params = new URLSearchParams({
+    q: query,
+    category_ids: "914", // Postcards
+    limit: String(count),
+    sort: "newlyListed",
+  });
+
+  const res = await fetch(
+    `https://api.ebay.com/buy/browse/v1/item_summary/search?${params.toString()}`,
     {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        keyword: query,
-        count,
-        daysToScrape: 90,
-        sortOrder: "endedRecently",
-        ebaySite: "ebay.com",
-        itemCondition: "any",
-        currencyMode: "USD",
-      }),
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+      },
     }
   );
 
-  if (!runRes.ok) throw new Error(`Apify run failed: ${runRes.status}`);
+  if (!res.ok) return []; // Non-critical — active listings are supplementary
 
-  const run = await runRes.json();
-  const runId = run.data?.id;
-  if (!runId) throw new Error("No run ID returned from Apify");
+  const data = await res.json();
+  const items = data.itemSummaries || [];
 
-  const maxWait = 120_000;
-  const start = Date.now();
-  let status = run.data?.status;
-
-  while (status !== "SUCCEEDED" && status !== "FAILED" && status !== "ABORTED") {
-    if (Date.now() - start > maxWait) throw new Error("Apify run timed out");
-    await new Promise((r) => setTimeout(r, 3000));
-    const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`);
-    const statusData = await statusRes.json();
-    status = statusData.data?.status;
-  }
-
-  if (status !== "SUCCEEDED") throw new Error(`Apify run ${status}`);
-
-  const datasetId = run.data?.defaultDatasetId;
-  const dataRes = await fetch(
-    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_TOKEN}&limit=${count}`
-  );
-
-  if (!dataRes.ok) throw new Error(`Failed to fetch dataset: ${dataRes.status}`);
-  return dataRes.json();
+  return items.map((item: Record<string, unknown>) => ({
+    title: item.title || "",
+    url: item.itemWebUrl || "",
+    listingPrice: parseFloat((item.price as Record<string, string>)?.value || "0"),
+    imageUrl: (item.image as Record<string, string>)?.imageUrl || null,
+    condition: item.condition || null,
+    itemId: item.itemId || null,
+    lensMatch: true, // Treat active listings same as Lens matches for scoring
+  }));
 }
 
 // --- Google Lens Visual Search ---
@@ -263,28 +330,42 @@ async function googleLensSearch(imageUrl: string): Promise<Record<string, unknow
 
 // --- Run tiered search and deduplicate ---
 
-async function tieredSearch(queries: string[]): Promise<Record<string, unknown>[]> {
-  const seen = new Set<string>();
-  const allResults: Record<string, unknown>[] = [];
+async function tieredSearch(
+  queries: string[],
+  sendProgress?: (step: string) => void
+): Promise<{ sold: Record<string, unknown>[]; active: Record<string, unknown>[] }> {
+  const seenSold = new Set<string>();
+  const soldResults: Record<string, unknown>[] = [];
 
-  for (const query of queries) {
+  // Sold items via Finding API
+  for (let i = 0; i < queries.length; i++) {
+    const query = queries[i];
     try {
-      const results = await fetchEbayComps(query, 15);
+      sendProgress?.(`Searching eBay sold listings (query ${i + 1}/${queries.length})...`);
+      const results = await fetchEbaySoldComps(query, 15);
       for (const item of results) {
-        const key = (item.title as string || "") + "|" + (item.price as number || 0);
-        if (!seen.has(key)) {
-          seen.add(key);
-          allResults.push(item);
+        const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
+        if (!seenSold.has(key)) {
+          seenSold.add(key);
+          soldResults.push(item);
         }
       }
-      // If first tier already found 10+ results, skip broader tiers
-      if (allResults.length >= 10) break;
+      if (soldResults.length >= 10) break;
     } catch (err) {
-      console.error(`Apify search failed for "${query}":`, err);
+      console.error(`eBay Finding API failed for "${query}":`, err);
     }
   }
 
-  return allResults;
+  // Active listings via Browse API (first query only — supplementary)
+  let activeResults: Record<string, unknown>[] = [];
+  try {
+    sendProgress?.("Checking active eBay listings...");
+    activeResults = await fetchEbayActiveListings(queries[0], 10);
+  } catch (err) {
+    console.error("eBay Browse API failed:", err);
+  }
+
+  return { sold: soldResults, active: activeResults };
 }
 
 // --- AI Relevance Scoring + Pricing ---
@@ -496,42 +577,20 @@ export async function POST(
           try { aiAnalysis = JSON.parse(aiResearch.data); } catch { /* ignore */ }
         }
 
-        // Step 0: Google Lens visual search
-        let lensResults: Record<string, unknown>[] = [];
-        const images = db
-          .select()
-          .from(postcardImages)
-          .where(eq(postcardImages.postcardId, parseInt(id)))
-          .all();
-        const frontImage = images.find((img) => img.side === "front") || images[0];
-
-        if (frontImage) {
-          try {
-            send({ status: "progress", step: "Uploading image for visual search..." });
-            const imageUrl = await uploadImageToApify(frontImage.filePath);
-            send({ status: "progress", step: "Running Google Lens visual match..." });
-            lensResults = await googleLensSearch(imageUrl);
-            send({ status: "progress", step: `Found ${lensResults.length} visual matches` });
-          } catch (err) {
-            console.error("Google Lens search failed:", err);
-            send({ status: "progress", step: "Visual search unavailable, continuing..." });
-          }
-        }
-
-        // Step 1: Keyword searches
+        // Step 1: Tiered eBay search (sold + active)
         const queries = buildTieredQueries(postcard, aiAnalysis);
-        send({ status: "progress", step: `Searching eBay sold listings (${queries.length} queries)...` });
-        const keywordComps = await tieredSearch(queries);
-        send({ status: "progress", step: `Found ${keywordComps.length} sold listings` });
+        const sendProgress = (step: string) => send({ status: "progress", step });
+        const { sold, active } = await tieredSearch(queries, sendProgress);
+        send({ status: "progress", step: `Found ${sold.length} sold + ${active.length} active listings` });
 
-        // Merge
+        // Merge: sold comps first, then active listings (marked as lensMatch for scoring)
         const seen = new Set<string>();
         const allComps: Record<string, unknown>[] = [];
-        for (const item of lensResults) {
+        for (const item of sold) {
           const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
           if (!seen.has(key)) { seen.add(key); allComps.push(item); }
         }
-        for (const item of keywordComps) {
+        for (const item of active) {
           const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
           if (!seen.has(key)) { seen.add(key); allComps.push(item); }
         }
@@ -574,7 +633,8 @@ export async function POST(
           status: "complete",
           success: true,
           queries,
-          lensMatches: lensResults.length,
+          soldComps: sold.length,
+          activeListings: active.length,
           compsFound: scored.length,
           relevantComps: scored.filter((s) => s.relevance >= 6).length,
           pricing,
