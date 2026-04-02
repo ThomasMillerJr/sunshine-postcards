@@ -13,7 +13,8 @@ export async function GET(request: NextRequest) {
   }
 
   // eBay expects: SHA256(challengeCode + verificationToken + endpoint URL)
-  const endpoint = `${request.nextUrl.protocol}//${request.nextUrl.host}/api/ebay/account-deletion`;
+  // Must match exactly what was registered with eBay
+  const endpoint = process.env.EBAY_DELETION_ENDPOINT || "https://sunshinepostcards.com/api/ebay/account-deletion";
   const hash = createHash("sha256")
     .update(challengeCode)
     .update(VERIFICATION_TOKEN)
