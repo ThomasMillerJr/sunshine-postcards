@@ -39,8 +39,12 @@ export default function FeedbackBubble() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Something went wrong");
+        try {
+          const data = await res.json();
+          setError(data.error || "Something went wrong");
+        } catch {
+          setError("Something went wrong");
+        }
         return;
       }
 
@@ -58,22 +62,25 @@ export default function FeedbackBubble() {
   return (
     <>
       {/* Floating button */}
+      {!open && (
       <button
         onClick={() => setOpen(true)}
         className="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-gradient-to-br from-[#F7B733] to-[#F0A030] text-white shadow-[0_4px_12px_rgba(247,183,51,0.4)] hover:shadow-[0_6px_16px_rgba(247,183,51,0.5)] hover:-translate-y-0.5 transition-all flex items-center justify-center"
         aria-label="Send feedback"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
       </button>
+      )}
 
       {/* Modal overlay */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={handleClose}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={handleClose} onKeyDown={(e) => { if (e.key === "Escape") handleClose(); }}>
           <div
             className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(247,183,51,0.1)] border border-[#FFF0D4] p-6 w-full max-w-md mx-4"
             onClick={(e) => e.stopPropagation()}
+            role="dialog" aria-modal="true"
           >
             {success ? (
               <div className="text-center py-6">
