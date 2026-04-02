@@ -23,6 +23,7 @@ interface ScoredComp {
   relevance: number; // 0-10
   matchReason: string;
   lensMatch: boolean;
+  imageMatch: boolean;
 }
 
 interface PricingResult {
@@ -225,7 +226,47 @@ async function fetchEbayActiveListings(query: string, count: number = 10): Promi
   }));
 }
 
-// --- Google Lens Visual Search (kept for future use, not called in main flow) ---
+// --- eBay Image Search (Visual Match via Browse API) ---
+
+async function fetchEbayImageMatches(filePath: string, count: number = 10): Promise<Record<string, unknown>[]> {
+  const token = await getEbayOAuthToken();
+  const buffer = await readFile(path.join(UPLOADS_DIR, filePath));
+  const base64 = buffer.toString("base64");
+
+  const res = await fetch(
+    `https://api.ebay.com/buy/browse/v1/item_summary/search_by_image?category_ids=914&limit=${count}`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ image: base64 }),
+    }
+  );
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`eBay Image Search failed: ${res.status} ${errText.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const items = data.itemSummaries || [];
+
+  return items.map((item: Record<string, unknown>) => ({
+    title: item.title || "",
+    url: item.itemWebUrl || "",
+    listingPrice: parseFloat((item.price as Record<string, string>)?.value || "0"),
+    imageUrl: (item.image as Record<string, string>)?.imageUrl || null,
+    condition: item.condition || null,
+    itemId: item.itemId || null,
+    lensMatch: true, // Active listing — same treatment as Browse API results
+    imageMatch: true, // Flag that this came from visual search specifically
+  }));
+}
+
+// --- Google Lens Visual Search (legacy, not called in main flow) ---
 
 async function uploadImageToApify(filePath: string): Promise<string> {
   const buffer = await readFile(path.join(UPLOADS_DIR, filePath));
@@ -332,12 +373,26 @@ async function googleLensSearch(imageUrl: string): Promise<Record<string, unknow
 
 async function tieredSearch(
   queries: string[],
+  frontImagePath: string | null,
   sendProgress?: (step: string) => void
-): Promise<{ sold: Record<string, unknown>[]; active: Record<string, unknown>[] }> {
+): Promise<{ sold: Record<string, unknown>[]; active: Record<string, unknown>[]; imageMatches: Record<string, unknown>[] }> {
   const seenSold = new Set<string>();
   const soldResults: Record<string, unknown>[] = [];
 
-  // Sold items via Finding API
+  // Tier 0: eBay Image Search (visual match)
+  let imageMatches: Record<string, unknown>[] = [];
+  if (frontImagePath) {
+    try {
+      sendProgress?.("Running eBay visual image search...");
+      imageMatches = await fetchEbayImageMatches(frontImagePath, 10);
+      sendProgress?.(`Found ${imageMatches.length} visual matches`);
+    } catch (err) {
+      console.error("eBay Image Search failed:", err);
+      sendProgress?.("Visual search unavailable, continuing with keyword search...");
+    }
+  }
+
+  // Tier 1-3: Sold items via Finding API
   for (let i = 0; i < queries.length; i++) {
     const query = queries[i];
     try {
@@ -365,7 +420,7 @@ async function tieredSearch(
     console.error("eBay Browse API failed:", err);
   }
 
-  return { sold: soldResults, active: activeResults };
+  return { sold: soldResults, active: activeResults, imageMatches };
 }
 
 // --- AI Relevance Scoring + Pricing ---
@@ -414,7 +469,8 @@ async function scoreAndPrice(
     const totalPrice = parseFloat(String(c.totalPrice || 0)) || 0;
     const isLens = c.lensMatch === true;
     const priceStr = soldPrice > 0 ? `$${soldPrice.toFixed(2)}` : totalPrice > 0 ? `$${totalPrice.toFixed(2)} (incl. shipping)` : (isLens ? "ACTIVE LISTING (no sold price)" : "$0.00");
-    const tag = isLens ? " [ACTIVE LISTING]" : " [SOLD]";
+    const isImageMatch = c.imageMatch === true;
+    const tag = isImageMatch ? " [IMAGE MATCH]" : isLens ? " [ACTIVE LISTING]" : " [SOLD]";
     return `${i + 1}. "${title}" — ${priceStr}${tag}`;
   }).join("\n");
 
@@ -426,7 +482,10 @@ async function scoreAndPrice(
         role: "user",
         content: `You are a vintage postcard pricing expert. Score each comparable for relevance to MY postcard, then recommend pricing.
 
-IMPORTANT: Comparables tagged [ACTIVE LISTING] are currently listed on eBay — they have asking prices, not sold prices. Use them for RELEVANCE SCORING and supply assessment but NOT for pricing. Comparables tagged [SOLD] are completed sales with actual sold prices — use these for pricing.
+IMPORTANT: Three types of comparables:
+- [IMAGE MATCH] — found via eBay's visual image search. These are ACTIVE LISTINGS of visually similar cards. High relevance signal but asking prices only, not sold. Many image matches = high supply.
+- [ACTIVE LISTING] — found via keyword search of current listings. Asking prices only, not sold. Use for supply assessment.
+- [SOLD] — completed eBay sales with actual sold prices. Use ONLY these for pricing.
 
 MY POSTCARD:
 ${analysisContext || `Title: ${postcard.title}\nEra: ${postcard.era}\nCondition: ${postcard.condition}\nLocation: ${postcard.locationDepicted || "unknown"}\nPublisher: ${postcard.publisher || "unknown"}\nCategory: ${postcard.category}`}
@@ -478,6 +537,7 @@ Price based ONLY on [SOLD] comps with relevance 6+ (these have actual sold price
         relevance: 5,
         matchReason: "Scoring unavailable",
         lensMatch: c.lensMatch === true,
+        imageMatch: c.imageMatch === true,
       })),
       pricing: {
         verdict: "unknown",
@@ -512,6 +572,7 @@ Price based ONLY on [SOLD] comps with relevance 6+ (these have actual sold price
       relevance: score?.relevance ?? 5,
       matchReason: score?.reason ?? "",
       lensMatch: c.lensMatch === true,
+      imageMatch: c.imageMatch === true,
     };
   }).sort((a, b) => b.relevance - a.relevance);
 
@@ -577,15 +638,31 @@ export async function POST(
           try { aiAnalysis = JSON.parse(aiResearch.data); } catch { /* ignore */ }
         }
 
-        // Step 1: Tiered eBay search (sold + active)
+        // Get front image for visual search
+        const images = db
+          .select()
+          .from(postcardImages)
+          .where(eq(postcardImages.postcardId, parseInt(id)))
+          .all();
+        const frontImage = images.find((img) => img.side === "front") || images[0];
+
+        // Step 1: Tiered eBay search (image + sold + active)
         const queries = buildTieredQueries(postcard, aiAnalysis);
         const sendProgress = (step: string) => send({ status: "progress", step });
-        const { sold, active } = await tieredSearch(queries, sendProgress);
-        send({ status: "progress", step: `Found ${sold.length} sold + ${active.length} active listings` });
+        const { sold, active, imageMatches } = await tieredSearch(
+          queries,
+          frontImage?.filePath || null,
+          sendProgress
+        );
+        send({ status: "progress", step: `Found ${sold.length} sold, ${imageMatches.length} visual, ${active.length} active` });
 
-        // Merge: sold comps first, then active listings (marked as lensMatch for scoring)
+        // Merge: image matches first, then sold, then active — deduped
         const seen = new Set<string>();
         const allComps: Record<string, unknown>[] = [];
+        for (const item of imageMatches) {
+          const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
+          if (!seen.has(key)) { seen.add(key); allComps.push(item); }
+        }
         for (const item of sold) {
           const key = ((item.title as string) || "").toLowerCase().slice(0, 50);
           if (!seen.has(key)) { seen.add(key); allComps.push(item); }
@@ -633,6 +710,7 @@ export async function POST(
           status: "complete",
           success: true,
           queries,
+          imageMatches: imageMatches.length,
           soldComps: sold.length,
           activeListings: active.length,
           compsFound: scored.length,
