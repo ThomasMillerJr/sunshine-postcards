@@ -12,6 +12,7 @@ export const postcards = sqliteTable("postcards", {
   publisher: text("publisher"),
   estimatedValue: real("estimated_value"),
   notes: text("notes"),
+  status: text("status").notNull().default("inventory"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
