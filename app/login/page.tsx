@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 export default function LoginPage() {
   const [pin, setPin] = useState(["", "", "", ""]);
@@ -61,10 +62,13 @@ export default function LoginPage() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#FFFCF5]">
       <div className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(247,183,51,0.1)] border border-[#FFF0D4] p-10 w-full max-w-sm text-center">
-        <img
+        <Image
           src="/logo.png"
           alt="Sunshine Postcards"
-          className="h-20 mx-auto mb-6"
+          width={200}
+          height={109}
+          className="mx-auto mb-6"
+          priority
         />
         <p className="text-[#B8B0A4] text-sm mb-8">Enter your PIN to continue</p>
         <div className="flex gap-3 justify-center mb-5">

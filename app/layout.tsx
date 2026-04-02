@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Link from "next/link";
+import Image from "next/image";
 
 export const metadata: Metadata = {
   title: "Sunshine Postcards",
@@ -17,7 +18,7 @@ export default function RootLayout({
       <body className="min-h-screen">
         <nav className="bg-white border-b-2 border-card-border px-7 flex items-center h-16 sticky top-0 z-50">
           <Link href="/" className="flex items-center gap-2.5 mr-8">
-            <img src="/logo.png" alt="Sunshine Postcards" className="h-9" />
+            <Image src="/logo.png" alt="Sunshine Postcards" width={120} height={65} priority />
           </Link>
           <div className="flex gap-1 h-full items-stretch">
             <Link
