@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Link from "next/link";
 import Image from "next/image";
+import FeedbackBubble from "./components/FeedbackBubble";
 
 export const metadata: Metadata = {
   title: "Sunshine Postcards",
@@ -46,6 +47,7 @@ export default function RootLayout({
         <main className="max-w-[1100px] mx-auto px-7 py-8">
           {children}
         </main>
+        <FeedbackBubble />
       </body>
     </html>
   );
