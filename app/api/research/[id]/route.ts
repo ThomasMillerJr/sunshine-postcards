@@ -5,6 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { readFile } from "fs/promises";
 import path from "path";
 import Anthropic from "@anthropic-ai/sdk";
+import { buildSalesHistoryContext } from "@/lib/sales-history";
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 const EBAY_APP_ID = process.env.EBAY_CLIENT_ID;
@@ -489,6 +490,8 @@ async function scoreAndPrice(
     return `${i + 1}. "${title}" — ${priceStr}${tag}`;
   }).join("\n");
 
+  const salesHistory = buildSalesHistoryContext();
+
   const message = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 2000,
@@ -507,6 +510,7 @@ ${analysisContext || `Title: ${postcard.title}\nEra: ${postcard.era}\nCondition:
 
 EBAY SOLD COMPARABLES:
 ${compsForPrompt || "No comparables found."}
+${salesHistory}
 
 Respond in this exact JSON format only, no markdown fences, no other text:
 {
