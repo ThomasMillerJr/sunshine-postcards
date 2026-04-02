@@ -591,53 +591,75 @@ export default function PostcardDetail() {
                   const items = Array.isArray(data) ? data : data.items || [];
                   return items.slice(0, 15).map((item: Record<string, unknown>, i: number) => {
                     const title = (item.title || item.name || "Unknown") as string;
-                    const soldPrice = parseFloat(String(item.soldPrice || item.price || 0)) || 0;
-                    const totalPrice = parseFloat(String(item.totalPrice || 0)) || 0;
+                    const soldPrice = parseFloat(String(item.soldPrice || 0)) || 0;
+                    const listingPrice = parseFloat(String(item.listingPrice || item.price || 0)) || 0;
                     const shipping = parseFloat(String(item.shippingPrice || 0)) || 0;
                     const url = (item.url as string) || null;
                     const endedAt = (item.endedAt as string) || null;
+                    const imageUrl = (item.imageUrl as string) || null;
                     const relevance = (item.relevance as number) ?? null;
                     const reason = (item.matchReason as string) || "";
                     const isLens = item.lensMatch === true;
-                    const displayPrice = soldPrice > 0 ? soldPrice : totalPrice;
+                    const isImageMatch = item.imageMatch === true;
+                    const isSold = soldPrice > 0;
+                    const displayPrice = isSold ? soldPrice : listingPrice;
                     const dateStr = endedAt ? new Date(endedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
                     return (
-                      <div key={i} className="py-2 border-b border-[#FFF8F0] last:border-0">
-                        <div className="flex items-center gap-2">
-                          {relevance !== null && (
-                            <span
-                              className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                                relevance >= 7 ? "bg-[#E8F5E9] text-[#2E7D32]" :
-                                relevance >= 4 ? "bg-[#FFF4D6] text-[#8A6A10]" :
-                                "bg-[#F0EBE3] text-[#B8B0A4]"
-                              }`}
-                              title={reason}
-                            >
-                              {relevance}
-                            </span>
-                          )}
-                          {isLens && (
-                            <span className="flex-shrink-0 text-[9px] font-medium bg-[#E3F2FD] text-[#1565C0] px-1.5 py-0.5 rounded">
-                              Visual
-                            </span>
-                          )}
-                          {url ? (
-                            <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-[#2D2A26] hover:text-[#E8634A] truncate flex-1" title={reason}>
-                              {title}
-                            </a>
+                      <div key={i} className="py-2.5 border-b border-[#FFF8F0] last:border-0">
+                        <div className="flex items-start gap-2.5">
+                          {/* Thumbnail */}
+                          {imageUrl ? (
+                            <div className="w-12 h-9 rounded bg-[#F0EBE3] overflow-hidden flex-shrink-0">
+                              <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                            </div>
                           ) : (
-                            <span className="text-sm text-[#2D2A26] truncate flex-1" title={reason}>{title}</span>
+                            <div className="w-12 h-9 rounded bg-[#F0EBE3] flex items-center justify-center flex-shrink-0">
+                              <span className="text-[10px] text-[#D4CFC6]">No img</span>
+                            </div>
                           )}
-                          <span className="text-sm font-bold text-[#2E7D32] flex-shrink-0">
-                            {displayPrice > 0 ? `$${displayPrice.toFixed(2)}` : isLens ? "Listed" : "\u2014"}
-                          </span>
-                        </div>
-                        {(shipping > 0 || dateStr) && (
-                          <div className="flex items-center gap-2 ml-8 mt-0.5">
-                            {shipping > 0 && <span className="text-[10px] text-[#B8B0A4]">+${shipping.toFixed(2)} ship</span>}
-                            {dateStr && <span className="text-[10px] text-[#B8B0A4]">Sold {dateStr}</span>}
+                          {/* Relevance + title */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              {relevance !== null && (
+                                <span
+                                  className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                                    relevance >= 7 ? "bg-[#E8F5E9] text-[#2E7D32]" :
+                                    relevance >= 4 ? "bg-[#FFF4D6] text-[#8A6A10]" :
+                                    "bg-[#F0EBE3] text-[#B8B0A4]"
+                                  }`}
+                                  title={reason}
+                                >
+                                  {relevance}
+                                </span>
+                              )}
+                              {isImageMatch && (
+                                <span className="flex-shrink-0 text-[8px] font-medium bg-[#E3F2FD] text-[#1565C0] px-1 py-0.5 rounded">
+                                  Visual
+                                </span>
+                              )}
+                              {url ? (
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-[#2D2A26] hover:text-[#E8634A] truncate" title={reason}>
+                                  {title}
+                                </a>
+                              ) : (
+                                <span className="text-sm text-[#2D2A26] truncate" title={reason}>{title}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {shipping > 0 && <span className="text-[10px] text-[#B8B0A4]">+${shipping.toFixed(2)} ship</span>}
+                              {dateStr && <span className="text-[10px] text-[#B8B0A4]">Sold {dateStr}</span>}
+                              {isLens && !isSold && <span className="text-[10px] text-[#B8B0A4]">Active listing</span>}
+                            </div>
                           </div>
-                        )}
+                          {/* Price */}
+                          <div className="flex-shrink-0 text-right">
+                            <span className={`text-sm font-bold ${isSold ? "text-[#2E7D32]" : "text-[#8A8278]"}`}>
+                              {displayPrice > 0 ? `$${displayPrice.toFixed(2)}` : "\u2014"}
+                            </span>
+                            {isSold && <div className="text-[9px] text-[#2E7D32]">Sold</div>}
+                            {!isSold && displayPrice > 0 && <div className="text-[9px] text-[#B8B0A4]">Asking</div>}
+                          </div>
+                        </div>
                       </div>
                     );
                   });
