@@ -1,8 +1,35 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFile } from "fs/promises";
 import path from "path";
+import sharp from "sharp";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+
+// Claude vision accepts max ~5MB base64 per image. Resize if needed.
+const MAX_IMAGE_BYTES = 3_500_000; // ~3.5MB raw = ~4.7MB base64, safe under 5MB limit
+
+async function prepareImageForClaude(filePath: string): Promise<{ base64: string; mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif" }> {
+  const fullPath = path.join(UPLOADS_DIR, filePath);
+  const ext = filePath.split(".").pop() || "jpg";
+  let buffer = await readFile(fullPath);
+
+  if (buffer.length > MAX_IMAGE_BYTES) {
+    // Resize down to fit within limits, keeping aspect ratio
+    const resized = await sharp(buffer)
+      .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    return {
+      base64: resized.toString("base64"),
+      mediaType: "image/jpeg" as const,
+    };
+  }
+
+  return {
+    base64: buffer.toString("base64"),
+    mediaType: getMediaType(ext),
+  };
+}
 
 let _client: Anthropic | null = null;
 
@@ -398,16 +425,13 @@ export async function analyzePostcard(images: PostcardImage[]): Promise<Analysis
 
   const imageBlocks: Anthropic.ImageBlockParam[] = [];
   for (const img of images) {
-    const ext = img.filePath.split(".").pop() || "jpg";
-    const buffer = await readFile(path.join(UPLOADS_DIR, img.filePath));
-    const base64 = buffer.toString("base64");
-
+    const prepared = await prepareImageForClaude(img.filePath);
     imageBlocks.push({
       type: "image",
       source: {
         type: "base64",
-        media_type: getMediaType(ext),
-        data: base64,
+        media_type: prepared.mediaType,
+        data: prepared.base64,
       },
     });
   }
@@ -466,9 +490,7 @@ const CROP_TOOL: Anthropic.Tool = {
 
 export async function detectCrop(filePath: string): Promise<CropBox | null> {
   const client = getClient();
-  const ext = filePath.split(".").pop() || "jpg";
-  const buffer = await readFile(path.join(UPLOADS_DIR, filePath));
-  const base64 = buffer.toString("base64");
+  const prepared = await prepareImageForClaude(filePath);
 
   try {
     const response = await client.messages.create({
@@ -482,7 +504,7 @@ export async function detectCrop(filePath: string): Promise<CropBox | null> {
           content: [
             {
               type: "image",
-              source: { type: "base64", media_type: getMediaType(ext), data: base64 },
+              source: { type: "base64", media_type: prepared.mediaType, data: prepared.base64 },
             },
             {
               type: "text",
