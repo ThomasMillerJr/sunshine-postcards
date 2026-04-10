@@ -13,21 +13,19 @@ async function prepareImageForClaude(filePath: string): Promise<{ base64: string
   const ext = filePath.split(".").pop() || "jpg";
   let buffer = await readFile(fullPath);
 
-  if (buffer.length > MAX_IMAGE_BYTES) {
-    // Resize down to fit within limits, keeping aspect ratio
-    const resized = await sharp(buffer)
-      .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 80 })
-      .toBuffer();
-    return {
-      base64: resized.toString("base64"),
-      mediaType: "image/jpeg" as const,
-    };
-  }
+  // Always normalize EXIF orientation (iPhone photos often have rotation metadata
+  // that causes the image to appear sideways without this correction)
+  const normalized = await sharp(buffer)
+    .rotate() // auto-apply EXIF orientation, then strip the tag
+    .resize(buffer.length > MAX_IMAGE_BYTES
+      ? { width: 2048, height: 2048, fit: "inside" as const, withoutEnlargement: true }
+      : undefined)
+    .jpeg({ quality: 85 })
+    .toBuffer();
 
   return {
-    base64: buffer.toString("base64"),
-    mediaType: getMediaType(ext),
+    base64: normalized.toString("base64"),
+    mediaType: "image/jpeg" as const,
   };
 }
 
