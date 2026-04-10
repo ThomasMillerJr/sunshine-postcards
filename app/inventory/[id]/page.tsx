@@ -105,6 +105,12 @@ function AnalysisDisplay({ data }: { data: string }) {
               <div className="text-[#2D2A26]">{c.publisher.name}</div>
             </div>
           )}
+          {(c?.specific_details?.artist_name || c?.specific_details?.photographer_studio) && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4]">Artist / Photographer</div>
+              <div className="text-[#2D2A26]">{c.specific_details.artist_name || c.specific_details.photographer_studio}</div>
+            </div>
+          )}
           {c?.location?.city && (
             <div>
               <div className="text-[10px] uppercase tracking-wider text-[#B8B0A4]">Location</div>

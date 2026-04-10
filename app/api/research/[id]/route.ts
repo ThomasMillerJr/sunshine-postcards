@@ -54,11 +54,15 @@ function buildTieredQueries(
     const tags = c.subject_tags as string[] | undefined;
     const era = c.era as { date_range?: string } | undefined;
 
+    const details = c.specific_details as { artist_name?: string; photographer_studio?: string } | undefined;
+    const artistName = details?.artist_name || details?.photographer_studio || null;
+
     const typeStr = cardType?.value?.replace(/_/g, " ") || "";
     const isUncertain = typeStr.startsWith("UNCERTAIN") || typeStr.startsWith("Cannot");
 
     // Tier 1: Most specific — publisher + card number + location, or exact subject + location
     const t1Parts: string[] = [];
+    if (artistName) t1Parts.push(artistName);
     if (pub?.name) t1Parts.push(pub.name);
     if (pub?.card_number) t1Parts.push(pub.card_number);
     if (loc?.specific_place) t1Parts.push(loc.specific_place);
@@ -465,12 +469,15 @@ async function scoreAndPrice(
       const pub = c.publisher as { name?: string } | undefined;
       const cond = c.condition as { grade?: string } | undefined;
       const tags = c.subject_tags as string[] | undefined;
+      const details = c.specific_details as { artist_name?: string; photographer_studio?: string } | undefined;
+      const artistName = details?.artist_name || details?.photographer_studio || null;
 
       analysisContext = [
         `Card Type: ${cardType?.value || "unknown"}`,
         `Era: ${era?.date_range || "unknown"}`,
         `Location: ${[loc?.specific_place, loc?.city, loc?.state].filter(Boolean).join(", ") || "unknown"}`,
         `Publisher: ${pub?.name || "unknown"}`,
+        artistName ? `Artist/Illustrator: ${artistName}` : null,
         `Condition: ${cond?.grade || "unknown"}`,
         `Subject: ${c.primary_subject || "unknown"}`,
         `Tags: ${tags?.join(", ") || "none"}`,
